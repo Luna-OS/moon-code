@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Frontend build output
+dist/
+*.local
+
+# Vite / TypeScript build caches
+node_modules/.tmp/
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Env files
+.env
+.env.local
+
+# Desktop app packages (npm run dist)
+release/
+
+# Python caches (the Replica skill tools)
+__pycache__/

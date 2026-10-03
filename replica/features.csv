@@ -1,0 +1,25 @@
+feature,area,priority,original,clone,notes
+Open a folder and browse it as a file tree,explorer,must,yes,yes,
+Create rename and delete files and folders,explorer,must,yes,yes,F2 and Delete; deleting goes to the recycle bin
+Code editor with syntax highlighting for common languages,editor,must,yes,yes,Monaco (MIT) with the Moon night and day themes
+Tabs with unsaved-change markers,editor,must,yes,yes,
+Save with Ctrl+S,editor,must,yes,yes,
+Go to file (Ctrl+P),navigation,must,yes,yes,
+Command palette (Ctrl+Shift+P),navigation,must,yes,yes,
+Search across files with case word and regex options,search,must,yes,yes,
+Integrated terminal,terminal,must,yes,yes,node-pty + xterm.js
+Resizable side bar panel and secondary side bar,layout,must,yes,yes,
+Status bar with branch cursor and language,layout,must,yes,yes,
+AI chat in a side panel working in the open folder,ai,must,yes,yes,Claude Code CLI with your Claude login
+Show the model and context use,ai,must,partial,yes,
+Show the plan's 5-hour and weekly limits,ai,must,no,yes,new: moon-phase gauges
+Projects from the Claude account appear after sign-in,ai,must,no,yes,new: Claude Code projects + GitHub repositories
+Continue an earlier Claude conversation,ai,should,partial,yes,
+Night and day theme,theme,must,yes,yes,the Luna-OS Moon palette
+Minimap and word wrap settings,editor,should,yes,yes,
+IntelliSense with project-wide type checking,editor,should,yes,partial,syntax checks only; no language servers yet
+Source control view (stage commit diff),scm,should,yes,no,only the branch in the status bar
+Split editors,editor,should,yes,no,
+Debugger,debug,could,yes,no,
+Extensions marketplace,extensions,could,yes,skip,their extension network is not part of the product to rebuild
+Settings sync across machines,settings,could,yes,no,

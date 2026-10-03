@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Moon Code's icon. The other Moon apps put a crescent at the top of the tile and their mark
+       below it; here the moon *is* the mark: the crescent is the opening bracket of a code tag,
+       a shooting star is the slash and a mint chevron closes it – "☾/>". -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f2470"/>
+      <stop offset="0.55" stop-color="#141030"/>
+      <stop offset="1" stop-color="#0b0920"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.5" r="0.6">
+      <stop offset="0" stop-color="#b9aefb" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#b9aefb" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.85" cy="0.85" r="0.5">
+      <stop offset="0" stop-color="#7fe3c6" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#7fe3c6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="moon" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#fdfbff"/>
+      <stop offset="0.5" stop-color="#ddd6ff"/>
+      <stop offset="1" stop-color="#a89cf2"/>
+    </linearGradient>
+    <linearGradient id="trail" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#9ad7f5" stop-opacity="0"/>
+      <stop offset="0.6" stop-color="#9ad7f5" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#f4f1ff"/>
+    </linearGradient>
+    <linearGradient id="chevron" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9ad7f5"/>
+      <stop offset="1" stop-color="#7fe3c6"/>
+    </linearGradient>
+    <mask id="crescent">
+      <rect width="512" height="512" fill="#fff"/>
+      <circle cx="246" cy="236" r="112" fill="#000"/>
+    </mask>
+    <filter id="blur" filterUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#glow)"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#glow2)"/>
+  <rect x="17" y="17" width="478" height="478" rx="111" fill="none" stroke="#b9aefb" stroke-opacity="0.3" stroke-width="2"/>
+  <!-- a quiet orbit behind the mark -->
+  <ellipse cx="256" cy="262" rx="206" ry="76" transform="rotate(-18 256 262)" fill="none" stroke="#b9aefb" stroke-opacity="0.16" stroke-width="4"/>
+  <circle cx="92" cy="104" r="4.5" fill="#fff" opacity="0.85"/>
+  <circle cx="420" cy="96" r="3.5" fill="#d6cffd" opacity="0.8"/>
+  <circle cx="134" cy="420" r="3.5" fill="#9ad7f5" opacity="0.7"/>
+  <circle cx="452" cy="392" r="3" fill="#fff" opacity="0.6"/>
+  <!-- the crescent: the opening bracket -->
+  <circle cx="196" cy="256" r="128" fill="#b9aefb" opacity="0.4" filter="url(#blur)" mask="url(#crescent)"/>
+  <circle cx="196" cy="256" r="128" fill="url(#moon)" mask="url(#crescent)"/>
+  <!-- the shooting star: the slash -->
+  <path d="M286 388 L354 150" stroke="url(#trail)" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="354" cy="150" r="20" fill="#f4f1ff" opacity="0.35" filter="url(#blur)"/>
+  <path d="M354 128 L359 145 L376 150 L359 155 L354 172 L349 155 L332 150 L349 145 Z" fill="#fdfbff"/>
+  <!-- the closing chevron -->
+  <path d="M388 214 L436 262 L388 310" fill="none" stroke="#7fe3c6" stroke-opacity="0.45" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" filter="url(#blur)"/>
+  <path d="M388 214 L436 262 L388 310" fill="none" stroke="url(#chevron)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
