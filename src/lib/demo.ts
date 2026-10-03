@@ -6,6 +6,7 @@ import type {
   ClaudeProject,
   ClaudeSession,
   DirEntry,
+  GitHubAccount,
   MoonCodeBridge,
   RateLimit,
   Repo,
@@ -54,6 +55,14 @@ const DEFAULT_SETTINGS: Settings = {
     usingOverage: false,
     at: now() - 6 * 60_000,
   },
+  cloudTasks: [
+    {
+      task: "Add a progress bar to the extract dialog",
+      repo: "Luna-OS/Moon-Zip",
+      at: now() - 3 * HOUR,
+    },
+  ],
+  mascot: true,
   fontSize: 14,
   wordWrap: false,
   minimap: true,
@@ -104,6 +113,7 @@ export class DemoBridge implements MoonCodeBridge {
   private settings: Settings = { ...DEFAULT_SETTINGS };
   private listeners = new Map<string, Set<Listener>>();
   private loggedIn = true;
+  private githubLoggedIn = true;
   private chats = new Map<string, { model: string | null; sessionId: string }>();
 
   constructor() {
@@ -236,6 +246,9 @@ export class DemoBridge implements MoonCodeBridge {
   gitBranch() {
     return Promise.resolve("main");
   }
+  gitHubRepo(root: string) {
+    return Promise.resolve(root === ROOT ? "Luna-OS/Moon-Zip" : null);
+  }
 
   terminalStart(id: string, opts: { cwd: string | null; command?: string[] | string }) {
     const line = typeof opts.command === "string" ? opts.command : opts.command?.join(" ");
@@ -244,7 +257,11 @@ export class DemoBridge implements MoonCodeBridge {
         id,
         data: `\x1b[38;2;185;174;251mluna@moon\x1b[0m:\x1b[38;2;154;215;245m${opts.cwd ?? "~"}\x1b[0m$ ${line ?? ""}\r\n`,
       });
-      if (line?.startsWith("claude auth login")) {
+      if (line?.includes("gh auth login")) {
+        this.emit("terminal:data", { id, data: "! First copy your one-time code: 4F2A-9C1B\r\n" });
+        this.githubLoggedIn = true;
+      }
+      if (line?.includes("claude auth login")) {
         this.emit("terminal:data", { id, data: "Opening the browser to sign in…\r\n" });
         this.loggedIn = true;
       }
@@ -360,6 +377,25 @@ export class DemoBridge implements MoonCodeBridge {
     return Promise.resolve(this.settings.lastRateLimit);
   }
 
+  /** For the tests: start signed out of GitHub. */
+  signOutOfGitHub() {
+    this.githubLoggedIn = false;
+  }
+  githubAccount(): Promise<GitHubAccount> {
+    const base = { installed: true, exe: "/usr/bin/gh" };
+    return Promise.resolve(
+      this.githubLoggedIn
+        ? {
+            ...base,
+            loggedIn: true,
+            login: "Luna-OS",
+            name: "Luna",
+            url: "https://github.com/Luna-OS",
+            avatar: null,
+          }
+        : { ...base, loggedIn: false, login: null, name: null, url: null, avatar: null },
+    );
+  }
   githubRepos() {
     return Promise.resolve({ source: "api" as const, repos: REPOS });
   }

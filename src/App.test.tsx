@@ -113,4 +113,60 @@ describe("Moon Code", () => {
       await screen.findByLabelText("Editor /home/luna/Moon-Zip/src/lib/format.ts"),
     ).toBeInTheDocument();
   });
+
+  it("signs in to GitHub in a terminal and shows the account", async () => {
+    const bridge = new DemoBridge();
+    bridge.signOutOfGitHub();
+    const start = vi.spyOn(bridge, "terminalStart");
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await user.click(await screen.findByRole("button", { name: "Cloud" }));
+    await user.click(await screen.findByRole("button", { name: /Sign in with GitHub/ }));
+    await waitFor(() =>
+      expect(start.mock.calls.some(([, o]) => String(o.command).includes("auth,login"))).toBe(true),
+    );
+    expect(await screen.findByText("@Luna-OS", undefined, { timeout: 6000 })).toBeInTheDocument();
+  });
+
+  it("hands a task to Claude in the cloud", async () => {
+    const bridge = new DemoBridge();
+    const start = vi.spyOn(bridge, "terminalStart");
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await user.click(await screen.findByRole("button", { name: "Cloud" }));
+    expect(await screen.findByText("Repository: Luna-OS/Moon-Zip")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Cloud task"), "Add dark mode to the installer");
+    await user.click(screen.getByRole("button", { name: /Start in the cloud/ }));
+    await waitFor(() => {
+      const call = start.mock.calls.find(
+        ([, o]) => Array.isArray(o.command) && o.command.includes("--cloud"),
+      );
+      expect(call?.[1].command).toEqual([
+        "/home/luna/.local/bin/claude",
+        "--cloud",
+        "Add dark mode to the installer",
+      ]);
+    });
+    expect(await screen.findByText("Add dark mode to the installer")).toBeInTheDocument();
+  });
+
+  it("Axo works while Claude works, and cheers when it is done", async () => {
+    const user = userEvent.setup();
+    render(<App bridge={new DemoBridge()} />);
+    expect(
+      await screen.findByRole("img", { name: /Axo the axolotl is waiting/ }),
+    ).toBeInTheDocument();
+    await user.type(await screen.findByLabelText("Message to Claude"), "Hi{Enter}");
+    expect(
+      (await screen.findAllByRole("img", { name: /coding with Claude/ })).length,
+    ).toBeGreaterThan(0);
+    expect(await screen.findByRole("img", { name: /happy: Claude is done/ })).toBeInTheDocument();
+  });
+
+  it("Axo sleeps until you sign in", async () => {
+    const bridge = new DemoBridge();
+    await bridge.claudeLogout();
+    render(<App bridge={bridge} />);
+    expect(await screen.findByRole("img", { name: /asleep/ })).toBeInTheDocument();
+  });
 });

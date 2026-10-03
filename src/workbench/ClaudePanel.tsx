@@ -12,7 +12,10 @@ import {
   ToolIcon,
 } from "../theme/icons";
 import { MoonPhase } from "../theme/MoonPhase";
+import { Axolotl } from "../mascot/Axolotl";
+import { axoLine, type AxoMood } from "../mascot/axo";
 import {
+  activityOf,
   allowRule,
   chatReducer,
   EFFORTS,
@@ -107,6 +110,23 @@ export function ClaudePanel({
   const model = settings.claudeModel;
   const mode = settings.claudePermissionMode;
   const effort = settings.claudeEffort;
+
+  // Axo cheers for a moment after each turn Claude finished well.
+  const [cheered, setCheered] = useState(0);
+  const cheering = chat.finished !== cheered;
+  useEffect(() => {
+    if (!cheering) return;
+    const t = setTimeout(() => setCheered(chat.finished), 2600);
+    return () => clearTimeout(t);
+  }, [cheering, chat.finished]);
+  const mood: AxoMood = !account?.loggedIn
+    ? "sleep"
+    : chat.busy
+      ? "work"
+      : cheering
+        ? "done"
+        : "idle";
+  const activity = activityOf(chat);
 
   // Claude Code's events for this chat.
   useEffect(
@@ -284,7 +304,7 @@ export function ClaudePanel({
   } else if (!account.installed) {
     body = (
       <Centered>
-        <ClaudeIcon size={34} />
+        {settings.mascot ? <Axolotl mood="sleep" size={88} /> : <ClaudeIcon size={34} />}
         <p className="m-0 font-semibold text-[var(--mc-text)]">
           Claude Code isn&apos;t installed yet
         </p>
@@ -300,7 +320,7 @@ export function ClaudePanel({
   } else if (!account.loggedIn) {
     body = (
       <Centered>
-        <ClaudeIcon size={34} />
+        {settings.mascot ? <Axolotl mood="sleep" size={88} /> : <ClaudeIcon size={34} />}
         <p className="m-0 font-semibold text-[var(--mc-text)]">Sign in with Claude</p>
         <p className="m-0">
           Use your Claude subscription. Your projects, your limits and the models of your plan show
@@ -333,7 +353,11 @@ export function ClaudePanel({
         >
           {chat.items.length === 0 && (
             <div className="m-auto flex max-w-[300px] flex-col items-center gap-2 text-center text-[0.8125rem] text-[var(--mc-text-muted)]">
-              <img src="./moon-code-logo.svg" alt="" width={44} height={44} />
+              {settings.mascot ? (
+                <Axolotl mood={mood} size={96} />
+              ) : (
+                <img src="./moon-code-logo.svg" alt="" width={44} height={44} />
+              )}
               <p className="m-0 font-semibold text-[var(--mc-text)]">
                 What are we building tonight?
               </p>
@@ -352,13 +376,24 @@ export function ClaudePanel({
               onOpenFile={onOpenFile}
             />
           ))}
-          {chat.busy && (
+          {chat.busy && !settings.mascot && (
             <div className="flex items-center gap-2 text-[0.75rem] text-[var(--mc-text-muted)]">
-              <span className="mc-working" /> Claude is working…
+              <span className="mc-working" /> {activity ?? "Claude is working…"}
             </div>
           )}
         </div>
         <div className="shrink-0 px-3 pb-3">
+          {settings.mascot && chat.items.length > 0 && (
+            <div className="mb-1.5 flex items-end gap-2 px-1" aria-live="polite">
+              <Axolotl mood={mood} size={56} />
+              <span
+                className="mb-1 min-w-0 truncate text-[0.75rem]"
+                style={{ color: mood === "work" ? "var(--mc-claude)" : "var(--mc-text-muted)" }}
+              >
+                {axoLine(mood, activity)}
+              </span>
+            </div>
+          )}
           <div className="mc-composer px-3 pb-2 pt-2.5">
             <textarea
               ref={input}

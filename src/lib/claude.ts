@@ -74,6 +74,8 @@ export interface ChatState {
   contextTokens: number | null;
   contextWindow: number | null;
   costUsd: number;
+  /** Counts the turns Claude finished without an error (Axo cheers on each). */
+  finished: number;
   /** Set when the process ended on its own; the next message restarts it. */
   ended: boolean;
 }
@@ -86,6 +88,7 @@ export const emptyChat = (): ChatState => ({
   contextTokens: null,
   contextWindow: null,
   costUsd: 0,
+  finished: 0,
   ended: false,
 });
 
@@ -218,7 +221,13 @@ function applyEvent(state: ChatState, ev: ClaudeEvent): ChatState {
           text: ev.text || "Claude Code stopped with an error.",
         });
       }
-      return { ...state, busy: false, items, costUsd: state.costUsd + (ev.costUsd ?? 0) };
+      return {
+        ...state,
+        busy: false,
+        items,
+        costUsd: state.costUsd + (ev.costUsd ?? 0),
+        finished: ev.ok && !ev.denials.length ? state.finished + 1 : state.finished,
+      };
     }
     case "error":
       return {
@@ -255,6 +264,35 @@ export function allowRule(denial: { tool: string; input: Record<string, unknown>
     return `Bash(${denial.input.command})`;
   }
   return denial.tool;
+}
+
+const VERBS: Record<string, string> = {
+  Read: "Reading",
+  Write: "Writing",
+  Edit: "Editing",
+  MultiEdit: "Editing",
+  NotebookEdit: "Editing",
+  Bash: "Running",
+  Glob: "Looking for",
+  Grep: "Searching for",
+  WebFetch: "Reading",
+  WebSearch: "Searching the web for",
+  Task: "Delegating",
+  Agent: "Delegating",
+  TodoWrite: "Planning",
+};
+
+/** What Claude is doing right now, in a few words ("Editing src/App.tsx"), or null. */
+export function activityOf(state: ChatState): string | null {
+  if (!state.busy) return null;
+  const last = state.items[state.items.length - 1];
+  if (last?.type === "tool" && !last.result) {
+    const verb = VERBS[last.name] ?? `Using ${last.name}`;
+    const what = last.name === "TodoWrite" ? "" : toolSummary(last.name, last.input);
+    return `${verb}${what ? ` ${what}` : ""}…`;
+  }
+  if (last?.type === "assistant" && !last.done) return "Writing the answer…";
+  return null;
 }
 
 /** A one-line summary of a tool call for its card. */

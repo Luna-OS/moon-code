@@ -43,6 +43,10 @@ export interface Settings {
   claudePermissionMode: PermissionMode;
   claudeEffort: Effort | null;
   lastRateLimit: RateLimit | null;
+  /** The cloud tasks started from Moon Code, newest first. */
+  cloudTasks: CloudTask[];
+  /** Show Axo, the axolotl, in the Claude panel. */
+  mascot: boolean;
   fontSize: number;
   wordWrap: boolean;
   minimap: boolean;
@@ -83,6 +87,24 @@ export interface ClaudeAccount {
   email: string | null;
   organization: string | null;
   plan: string | null;
+}
+
+export interface GitHubAccount {
+  installed: boolean;
+  exe: string | null;
+  loggedIn: boolean;
+  login: string | null;
+  name: string | null;
+  url: string | null;
+  /** A data: URL of the avatar, or null. */
+  avatar: string | null;
+}
+
+/** A task Moon Code handed to Claude Code on the web. */
+export interface CloudTask {
+  task: string;
+  repo: string;
+  at: number;
 }
 
 export interface ClaudeProject {
@@ -182,6 +204,8 @@ export interface MoonCodeBridge {
   listFiles(root: string): Promise<string[]>;
   search(root: string, opts: SearchOptions): Promise<SearchHit[]>;
   gitBranch(root: string): Promise<string | null>;
+  /** "owner/name" of the folder's GitHub remote (origin), or null. */
+  gitHubRepo(root: string): Promise<string | null>;
 
   terminalStart(
     id: string,
@@ -200,6 +224,7 @@ export interface MoonCodeBridge {
   claudeStop(chatId: string): Promise<void>;
   claudeCheckLimits(): Promise<RateLimit | null>;
 
+  githubAccount(): Promise<GitHubAccount>;
   githubRepos(): Promise<{ source: "gh" | "api" | "none"; repos: Repo[] }>;
   githubClone(cloneUrl: string, name: string): Promise<string>;
 

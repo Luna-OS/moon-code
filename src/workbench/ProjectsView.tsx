@@ -14,9 +14,11 @@ import type {
   ClaudeAccount,
   ClaudeProject,
   ClaudeSession,
+  GitHubAccount,
   MoonCodeBridge,
   Repo,
 } from "../lib/types";
+import { GitHubCard } from "./GitHubCard";
 
 /**
  * Every project you work on with Claude: the folders Claude Code knows on this computer (they
@@ -31,6 +33,11 @@ export function ProjectsView({
   onResume,
   onSignIn,
   onError,
+  github,
+  onGitHubSignIn,
+  onGitHubSignOut,
+  onGitHubInstall,
+  onGitHubRefresh,
 }: {
   bridge: MoonCodeBridge;
   account: ClaudeAccount | null;
@@ -40,6 +47,11 @@ export function ProjectsView({
   onResume: (project: string, session: ClaudeSession) => void;
   onSignIn: () => void;
   onError: (message: string) => void;
+  github: GitHubAccount | null;
+  onGitHubSignIn: () => void;
+  onGitHubSignOut: () => void;
+  onGitHubInstall: () => void;
+  onGitHubRefresh: () => void;
 }) {
   const [projects, setProjects] = useState<ClaudeProject[] | null>(null);
   const [repos, setRepos] = useState<{ source: string; repos: Repo[] } | null>(null);
@@ -49,24 +61,39 @@ export function ProjectsView({
   const [cloning, setCloning] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const signedIn = Boolean(account?.loggedIn);
+  const githubLogin = github?.loggedIn ? github.login : null;
 
-  const load = useCallback(() => {
+  const loadProjects = useCallback(() => {
     if (!signedIn) return;
     bridge
       .claudeProjects()
       .then(setProjects)
       .catch((e: Error) => onError(e.message));
-    bridge
-      .githubRepos()
-      .then((r) => {
-        setRepos(r);
-        setRepoError(null);
-      })
-      .catch((e: Error) => setRepoError(e.message));
   }, [bridge, signedIn, onError]);
 
+  const loadRepos = useCallback(
+    // `login` is only there so that a GitHub sign-in or sign-out lists the repositories again.
+    (_login: string | null) => {
+      if (!signedIn) return;
+      bridge
+        .githubRepos()
+        .then((r) => {
+          setRepos(r);
+          setRepoError(null);
+        })
+        .catch((e: Error) => setRepoError(e.message));
+    },
+    [bridge, signedIn],
+  );
+
+  const load = () => {
+    loadProjects();
+    loadRepos(githubLogin);
+  };
+
   // Signing in is all it takes: the lists load as soon as the account is there.
-  useEffect(load, [load]);
+  useEffect(loadProjects, [loadProjects]);
+  useEffect(() => loadRepos(githubLogin), [loadRepos, githubLogin]);
 
   const toggleSessions = (p: ClaudeProject) => {
     if (open === p.path) {
@@ -220,6 +247,16 @@ export function ProjectsView({
         <h3 className="mc-eyebrow m-0 flex items-center gap-1.5 px-2 pb-1 pt-4">
           <CloudIcon size={12} /> On GitHub
         </h3>
+        <div className="px-1 pb-1.5">
+          <GitHubCard
+            account={github}
+            onSignIn={onGitHubSignIn}
+            onSignOut={onGitHubSignOut}
+            onInstall={onGitHubInstall}
+            onRefresh={onGitHubRefresh}
+            onOpen={(url) => void bridge.openExternal(url)}
+          />
+        </div>
         {repoError && (
           <p className="m-0 px-2 text-[0.75rem] text-[var(--mc-danger)]">{repoError}</p>
         )}

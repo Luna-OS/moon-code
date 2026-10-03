@@ -138,6 +138,7 @@ handle("fs:trash", (_e, p) => shell.trashItem(p));
 handle("fs:listFiles", (_e, root) => workspace.listFiles(root));
 handle("fs:search", (_e, root, opts) => workspace.search(root, opts));
 handle("git:branch", (_e, root) => workspace.gitBranch(root));
+handle("git:githubRepo", (_e, root) => workspace.gitHubRepo(root));
 
 // Terminals
 handle("terminal:start", (_e, id, opts) => terminals.start(id, opts));
@@ -198,6 +199,7 @@ handle("claude:checkLimits", async () => {
 });
 
 // Projects on GitHub
+handle("github:account", () => github.account((url, opts) => net.fetch(url, opts)));
 handle("github:repos", () =>
   github.listRepos(settings.get().githubOwner, (url, opts) => net.fetch(url, opts)),
 );

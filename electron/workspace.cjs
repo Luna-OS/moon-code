@@ -185,7 +185,33 @@ function gitBranch(root) {
   });
 }
 
+/**
+ * "owner/name" of a GitHub remote URL (https, ssh or git@ form), or null for anything else.
+ * "https://github.com/Luna-OS/moon-code.git" → "Luna-OS/moon-code".
+ */
+function parseGitHubRemote(url) {
+  const m =
+    /^(?:https?:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(
+      (url || "").trim(),
+    );
+  return m ? `${m[1]}/${m[2]}` : null;
+}
+
+/** The GitHub repository ("owner/name") the folder's `origin` points at, or null. */
+function gitHubRepo(root) {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      ["remote", "get-url", "origin"],
+      { cwd: root, timeout: 5000, windowsHide: true },
+      (err, stdout) => resolve(err ? null : parseGitHubRemote(stdout)),
+    );
+  });
+}
+
 module.exports = {
+  parseGitHubRemote,
+  gitHubRepo,
   readDir,
   readFile,
   writeFile,

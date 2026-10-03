@@ -22,6 +22,10 @@ const DEFAULTS = {
   claudeEffort: null,
   /** The last known plan limits, so they show before the first message. */
   lastRateLimit: null,
+  /** The cloud tasks started from Moon Code, newest first. */
+  cloudTasks: [],
+  /** Show Axo, the axolotl, in the Claude panel. */
+  mascot: true,
   fontSize: 14,
   wordWrap: false,
   minimap: true,
