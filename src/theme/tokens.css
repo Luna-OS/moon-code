@@ -1,0 +1,1060 @@
+@import "tailwindcss";
+
+/*
+ * Moon Code design tokens — the same night-sky palette as MoonDisk,
+ * MoonTask, Moon Browser and Moon Explorer (see docs/theme.md for where each value
+ * comes from).
+ *
+ * Tailwind v4 is configured CSS-first: `@theme` below is the single source
+ * of truth for Tailwind's generated utility classes (bg-lavender-400, …).
+ * Keep it identical to the sibling apps so every Moon app is one family.
+ *
+ * The semantic custom properties further down (--mc-*) are the ones
+ * components reach for; they carry the night/day switch and keep intent
+ * ("this is a surface") separate from the raw palette.
+ */
+@theme {
+  --color-night-950: #0b0920;
+  --color-night-900: #141030;
+  --color-night-800: #1d1742;
+  --color-violet-700: #3b2e6b;
+  --color-lavender-400: #b9aefb;
+  --color-lavender-300: #d6cffd;
+  --color-moon-100: #f4f1ff;
+  --color-mint-400: #7fe3c6;
+  --color-sky-300: #9ad7f5;
+  --color-peach-300: #f7b89a;
+  --color-cream-100: #fbf7f0;
+  --color-success-400: #7fe3c6;
+  --color-warning-400: #f3c766;
+  --color-error-500: #e5626b;
+
+  --radius-md: 0.75rem;
+  --radius-lg: 1.25rem;
+
+  --font-mono:
+    ui-monospace, "Cascadia Code", "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+:root {
+  color-scheme: dark;
+
+  --mc-bg: var(--color-night-950);
+  --mc-text: var(--color-cream-100);
+  --mc-text-muted: color-mix(in srgb, var(--color-cream-100) 62%, transparent);
+  --mc-text-faint: color-mix(in srgb, var(--color-cream-100) 40%, transparent);
+  --mc-border: color-mix(in srgb, var(--color-lavender-400) 18%, transparent);
+  --mc-border-strong: color-mix(in srgb, var(--color-lavender-400) 36%, transparent);
+  --mc-accent: var(--color-lavender-300);
+  --mc-focus-ring: var(--color-lavender-300);
+  --mc-glass-top: color-mix(in srgb, var(--color-night-800) 62%, transparent);
+  --mc-glass-bottom: color-mix(in srgb, var(--color-night-900) 70%, transparent);
+  --mc-solid: var(--color-night-900);
+  --mc-popover: #181338;
+  --mc-inset: color-mix(in srgb, var(--color-night-950) 55%, transparent);
+  --mc-hover: rgb(255 255 255 / 0.04);
+  --mc-selected: color-mix(in srgb, var(--color-lavender-400) 15%, transparent);
+  --mc-warning: var(--color-warning-400);
+  --mc-danger: #f28b92;
+  --mc-success: var(--color-mint-400);
+
+  /* The window frame (custom title bar) — same values as Moon Browser's
+   * tab strip, so the native window buttons match (frame-colors.ts). */
+  --mc-frame: #0b0920;
+  --mc-toolbar: #141030;
+
+  /* File kinds in the list (always paired with a name / type label). */
+  --mc-kind-folder: var(--color-lavender-400);
+  --mc-kind-image: var(--color-sky-300);
+  --mc-kind-media: var(--color-peach-300);
+  --mc-kind-code: var(--color-mint-400);
+  --mc-kind-archive: var(--color-warning-400);
+  --mc-kind-file: color-mix(in srgb, var(--color-cream-100) 55%, transparent);
+
+  /* The workbench: the editor's own background (Monaco needs a solid color, see monaco-theme.ts),
+   * the side bars and the panel. */
+  --mc-editor: #100d28;
+  --mc-sidebar: color-mix(in srgb, var(--color-night-900) 82%, transparent);
+  --mc-panel: color-mix(in srgb, var(--color-night-950) 88%, transparent);
+  --mc-claude: var(--color-mint-400);
+
+  --mc-motion: 180ms;
+}
+
+/* Day theme — the default is the night theme. The same selectors apply
+ * for an explicit choice and for "follow the system". */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --mc-bg: #f5f2fb;
+  --mc-text: #1c1733;
+  --mc-text-muted: color-mix(in srgb, #1c1733 64%, transparent);
+  --mc-text-faint: color-mix(in srgb, #1c1733 42%, transparent);
+  --mc-border: color-mix(in srgb, var(--color-violet-700) 16%, transparent);
+  --mc-border-strong: color-mix(in srgb, var(--color-violet-700) 32%, transparent);
+  --mc-accent: #5b4bc4;
+  --mc-focus-ring: #6c5ce0;
+  --mc-glass-top: rgb(255 255 255 / 0.82);
+  --mc-glass-bottom: rgb(255 255 255 / 0.7);
+  --mc-solid: #ffffff;
+  --mc-popover: #ffffff;
+  --mc-inset: color-mix(in srgb, var(--color-violet-700) 5%, white);
+  --mc-hover: color-mix(in srgb, var(--color-violet-700) 5%, transparent);
+  --mc-selected: color-mix(in srgb, #7d6de0 14%, transparent);
+  --mc-warning: #a86b00;
+  --mc-danger: #c2323d;
+  --mc-success: #1d7d65;
+
+  --mc-frame: #ece7f7;
+  --mc-toolbar: #f7f4fd;
+
+  --mc-kind-folder: #7d6de0;
+  --mc-kind-image: #2f86b5;
+  --mc-kind-media: #c7663b;
+  --mc-kind-code: #1d7d65;
+  --mc-kind-archive: #a86b00;
+  --mc-kind-file: color-mix(in srgb, #1c1733 50%, transparent);
+
+  --mc-editor: #fcfbff;
+  --mc-sidebar: rgb(255 255 255 / 0.72);
+  --mc-panel: rgb(255 255 255 / 0.8);
+  --mc-claude: #1d7d65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --mc-motion: 0ms;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  background: var(--mc-bg);
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      ellipse 80% 55% at 85% -5%,
+      color-mix(in srgb, var(--color-lavender-400) 16%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 70% 60% at 0% 0%,
+      color-mix(in srgb, var(--color-violet-700) 55%, transparent),
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 90% 50% at 50% 115%,
+      color-mix(in srgb, var(--color-sky-300) 8%, transparent),
+      transparent 60%
+    ),
+    linear-gradient(180deg, var(--color-night-900) 0%, var(--color-night-950) 70%);
+  background-attachment: fixed;
+  color: var(--mc-text);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    Roboto,
+    "Noto Sans",
+    sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="light"] body {
+  background:
+    radial-gradient(
+      ellipse 80% 55% at 85% -5%,
+      color-mix(in srgb, var(--color-lavender-400) 28%, transparent),
+      transparent 60%
+    ),
+    linear-gradient(180deg, #f7f4fd 0%, #eee9f8 100%);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-lavender-400) 40%, transparent);
+}
+
+/* A visible keyboard focus is a must. */
+:focus-visible {
+  outline: 2px solid var(--mc-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Quiet scrollbars that match the night sky. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-lavender-400) 28%, transparent) transparent;
+}
+
+/* ---- Night sky: stars + moon, purely decorative ---- */
+
+.mc-sky {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.mc-sky::before,
+.mc-sky::after {
+  content: "";
+  position: absolute;
+  inset: -50%;
+}
+
+.mc-sky::before {
+  background-image:
+    radial-gradient(1.5px 1.5px at 23px 41px, rgb(255 255 255 / 0.8), transparent),
+    radial-gradient(1.5px 1.5px at 142px 88px, rgb(255 255 255 / 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 251px 17px, rgb(214 207 253 / 0.9), transparent),
+    radial-gradient(1.5px 1.5px at 67px 196px, rgb(255 255 255 / 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 199px 243px, rgb(255 255 255 / 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 297px 158px, rgb(154 215 245 / 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 111px 281px, rgb(255 255 255 / 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 309px 300px, rgb(214 207 253 / 0.6), transparent);
+  background-size: 320px 320px;
+}
+
+.mc-sky::after {
+  background-image:
+    radial-gradient(2px 2px at 60px 90px, rgb(255 255 255 / 0.95), transparent),
+    radial-gradient(2.5px 2.5px at 380px 210px, rgb(214 207 253 / 0.95), transparent),
+    radial-gradient(2px 2px at 250px 460px, rgb(255 255 255 / 0.9), transparent),
+    radial-gradient(2.5px 2.5px at 470px 40px, rgb(255 255 255 / 0.95), transparent);
+  background-size: 540px 540px;
+  /* Like MoonTask and Moon Explorer, the stars don't twinkle: a full-window
+   * opacity animation costs CPU for nothing. */
+  opacity: 0.8;
+}
+
+:root[data-theme="light"] .mc-sky::before,
+:root[data-theme="light"] .mc-sky::after {
+  opacity: 0;
+}
+
+.mc-moon {
+  position: absolute;
+  top: -70px;
+  right: -40px;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  box-shadow:
+    inset -46px 22px 0 0 color-mix(in srgb, var(--color-moon-100) 92%, transparent),
+    0 0 90px -20px color-mix(in srgb, var(--color-lavender-400) 45%, transparent);
+  opacity: 0.4;
+  transform: rotate(-12deg);
+}
+
+:root[data-theme="light"] .mc-moon {
+  box-shadow:
+    inset -46px 22px 0 0 color-mix(in srgb, var(--color-lavender-400) 55%, transparent),
+    0 0 90px -20px color-mix(in srgb, var(--color-lavender-400) 45%, transparent);
+}
+
+/* ---- Reusable surfaces and controls ---- */
+
+@layer components {
+  .mc-glass {
+    background: linear-gradient(180deg, var(--mc-glass-top), var(--mc-glass-bottom));
+    border: 1px solid var(--mc-border);
+    border-radius: var(--radius-lg);
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.05),
+      0 24px 60px -30px rgb(0 0 0 / 0.55);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+
+  .mc-popover {
+    background: var(--mc-popover);
+    border: 1px solid var(--mc-border-strong);
+    border-radius: 0.9rem;
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.05),
+      0 18px 50px -12px rgb(0 0 0 / 0.6);
+  }
+
+  :root[data-theme="light"] .mc-popover {
+    box-shadow: 0 18px 50px -14px rgb(43 33 96 / 0.35);
+  }
+
+  .mc-inset {
+    background: var(--mc-inset);
+    border: 1px solid color-mix(in srgb, var(--color-lavender-400) 12%, transparent);
+    border-radius: var(--radius-md);
+  }
+
+  .mc-title {
+    background: linear-gradient(
+      100deg,
+      var(--color-moon-100) 0%,
+      var(--color-lavender-300) 45%,
+      var(--color-lavender-400) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  :root[data-theme="light"] .mc-title {
+    background: linear-gradient(100deg, #2b2160 0%, #5b4bc4 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  .mc-eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--mc-accent) 75%, transparent);
+  }
+
+  /* Custom title bar of the frameless window (Moon Explorer, Moon Browser, Moon Zip). */
+  .mc-titlebar {
+    -webkit-app-region: drag;
+    app-region: drag;
+    user-select: none;
+    background: var(--mc-frame);
+    border-bottom: 1px solid var(--mc-border);
+  }
+  .mc-titlebar button,
+  .mc-titlebar input {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+
+  .mc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    height: 2rem;
+    padding: 0 0.8rem;
+    border-radius: 0.65rem;
+    border: 1px solid transparent;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    white-space: nowrap;
+    cursor: pointer;
+    color: var(--mc-text);
+    background: transparent;
+    transition:
+      background-color var(--mc-motion),
+      border-color var(--mc-motion),
+      box-shadow var(--mc-motion),
+      filter var(--mc-motion);
+  }
+  .mc-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .mc-btn-sm {
+    height: 1.75rem;
+    padding: 0 0.6rem;
+    font-size: 0.75rem;
+  }
+  .mc-btn-icon {
+    width: 2rem;
+    padding: 0;
+  }
+
+  .mc-btn-primary {
+    background: linear-gradient(135deg, var(--color-lavender-300), #a597f5);
+    color: var(--color-night-950);
+    box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--color-lavender-400) 80%, transparent);
+  }
+  .mc-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+
+  .mc-btn-ghost {
+    background: var(--mc-hover);
+    border-color: color-mix(in srgb, var(--color-lavender-400) 22%, transparent);
+  }
+  .mc-btn-ghost:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-lavender-400) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-lavender-400) 42%, transparent);
+  }
+  .mc-btn-ghost[aria-pressed="true"] {
+    background: var(--mc-selected);
+    border-color: color-mix(in srgb, var(--color-lavender-400) 50%, transparent);
+    color: var(--mc-accent);
+  }
+
+  .mc-btn-danger {
+    background: color-mix(in srgb, var(--color-error-500) 8%, transparent);
+    border-color: color-mix(in srgb, var(--color-error-500) 45%, transparent);
+    color: var(--mc-danger);
+  }
+  .mc-btn-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-error-500) 18%, transparent);
+  }
+
+  /* Borderless square icon buttons of the toolbar. */
+  .mc-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    flex-shrink: 0;
+    border-radius: 0.65rem;
+    border: 0;
+    background: transparent;
+    color: var(--mc-text-muted);
+    cursor: pointer;
+    transition:
+      background-color var(--mc-motion),
+      color var(--mc-motion);
+  }
+  .mc-icon-btn:hover:not(:disabled),
+  .mc-icon-btn[aria-expanded="true"] {
+    background: color-mix(in srgb, var(--color-lavender-400) 8%, transparent);
+    color: var(--mc-text);
+  }
+  .mc-icon-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .mc-icon-btn[aria-pressed="true"] {
+    color: var(--mc-accent);
+  }
+
+  .mc-input {
+    height: 2rem;
+    padding: 0 0.7rem;
+    border-radius: 0.65rem;
+    border: 1px solid color-mix(in srgb, var(--color-lavender-400) 20%, transparent);
+    background: var(--mc-inset);
+    color: var(--mc-text);
+    font: inherit;
+    font-size: 0.8125rem;
+    transition:
+      border-color var(--mc-motion),
+      box-shadow var(--mc-motion);
+  }
+  .mc-input::placeholder {
+    color: var(--mc-text-faint);
+  }
+  .mc-input:hover:not(:disabled) {
+    border-color: var(--mc-border-strong);
+  }
+  .mc-input:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--color-lavender-400) 70%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-lavender-400) 20%, transparent);
+  }
+  select.mc-input option {
+    background: var(--mc-solid);
+    color: var(--mc-text);
+  }
+
+  /* Breadcrumb segments of the open file's path (Moon Explorer's path bar). */
+  .mc-crumb {
+    padding: 0.2rem 0.5rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--mc-text-muted);
+    font: inherit;
+    cursor: pointer;
+  }
+  .mc-crumb:hover {
+    background: var(--mc-hover);
+    color: var(--mc-text);
+  }
+  .mc-crumb[aria-current="page"] {
+    color: var(--mc-text);
+    font-weight: 600;
+  }
+
+  .mc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 1.25rem;
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    background: color-mix(in srgb, var(--color-lavender-400) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-lavender-400) 20%, transparent);
+    color: var(--mc-accent);
+  }
+  .mc-chip-mint {
+    background: color-mix(in srgb, var(--color-mint-400) 10%, transparent);
+    border-color: color-mix(in srgb, var(--color-mint-400) 28%, transparent);
+    color: var(--mc-success);
+  }
+  .mc-chip-warning {
+    background: color-mix(in srgb, var(--color-warning-400) 10%, transparent);
+    border-color: color-mix(in srgb, var(--color-warning-400) 30%, transparent);
+    color: var(--mc-warning);
+  }
+  .mc-chip-danger {
+    background: color-mix(in srgb, var(--color-error-500) 10%, transparent);
+    border-color: color-mix(in srgb, var(--color-error-500) 30%, transparent);
+    color: var(--mc-danger);
+  }
+  .mc-chip-muted {
+    background: transparent;
+    border-color: var(--mc-border);
+    color: var(--mc-text-muted);
+  }
+
+  /* Dense data tables — MoonTask's process table. */
+  .mc-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .mc-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    height: 2.1rem;
+    padding: 0 0.6rem;
+    text-align: left;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--mc-text-muted);
+    background: var(--mc-solid);
+    border-bottom: 1px solid var(--mc-border);
+    white-space: nowrap;
+  }
+  .mc-table tbody td {
+    height: 1.875rem;
+    padding: 0 0.6rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-lavender-400) 6%, transparent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 0;
+  }
+  .mc-table tbody tr {
+    transition: background-color 120ms;
+  }
+  .mc-table tbody tr:hover {
+    background: var(--mc-hover);
+  }
+  .mc-table tbody tr[aria-selected="true"] {
+    background: var(--mc-selected);
+    box-shadow: inset 2px 0 0 0 var(--mc-accent);
+  }
+
+  .mc-meter {
+    height: 0.3rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-lavender-400) 14%, transparent);
+    overflow: hidden;
+  }
+  .mc-meter > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #8676e3, var(--color-lavender-300));
+  }
+  .mc-meter[data-tone="warning"] > span {
+    background: linear-gradient(90deg, #d9a640, var(--color-warning-400));
+  }
+
+  /* A switch: a checkbox that looks like a small moon sliding along. */
+  .mc-switch {
+    appearance: none;
+    position: relative;
+    width: 2.25rem;
+    height: 1.3rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-lavender-400) 16%, transparent);
+    border: 1px solid var(--mc-border-strong);
+    cursor: pointer;
+    transition: background-color var(--mc-motion);
+  }
+  .mc-switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(1.3rem - 6px);
+    height: calc(1.3rem - 6px);
+    border-radius: 50%;
+    background: var(--mc-text-muted);
+    transition:
+      transform var(--mc-motion),
+      background-color var(--mc-motion);
+  }
+  .mc-switch:checked {
+    background: linear-gradient(135deg, var(--color-lavender-300), #a597f5);
+    border-color: transparent;
+  }
+  .mc-switch:checked::after {
+    transform: translateX(0.95rem);
+    background: var(--color-night-950);
+  }
+
+  .mc-kbd {
+    display: inline-flex;
+    align-items: center;
+    height: 1.15rem;
+    padding: 0 0.3rem;
+    border-radius: 0.3rem;
+    border: 1px solid var(--mc-border);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--mc-text-muted);
+  }
+
+  /* Items of a context menu (Moon Browser's menu rows). */
+  .mc-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    height: 2rem;
+    padding: 0 0.65rem;
+    border: 0;
+    border-radius: 0.55rem;
+    background: transparent;
+    color: var(--mc-text);
+    font: inherit;
+    font-size: 0.8125rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mc-menu-item:hover,
+  .mc-menu-item:focus-visible {
+    background: var(--mc-selected);
+    outline: none;
+  }
+
+  /* A dashed drop target. */
+  .mc-drop {
+    border: 1.5px dashed color-mix(in srgb, var(--color-lavender-400) 38%, transparent);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--color-lavender-400) 4%, transparent);
+    transition:
+      border-color var(--mc-motion),
+      background-color var(--mc-motion),
+      box-shadow var(--mc-motion);
+  }
+  .mc-drop[data-active="true"] {
+    border-color: color-mix(in srgb, var(--color-lavender-300) 85%, transparent);
+    background: color-mix(in srgb, var(--color-lavender-400) 12%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-lavender-400) 14%, transparent);
+  }
+
+  /* A choice card (theme, permission mode): a radio that looks like a tile. */
+  .mc-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.7rem;
+    border: 1px solid var(--mc-border);
+    background: var(--mc-hover);
+    color: var(--mc-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      background-color var(--mc-motion),
+      border-color var(--mc-motion);
+  }
+  .mc-option:hover {
+    background: color-mix(in srgb, var(--color-lavender-400) 10%, transparent);
+    border-color: var(--mc-border-strong);
+  }
+  .mc-option[aria-checked="true"] {
+    background: var(--mc-selected);
+    border-color: color-mix(in srgb, var(--color-lavender-400) 60%, transparent);
+  }
+  .mc-option[aria-checked="true"] .mc-option-title {
+    color: var(--mc-accent);
+  }
+  .mc-option-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .mc-option-hint {
+    font-size: 0.6875rem;
+    color: var(--mc-text-muted);
+  }
+
+  .mc-label {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--mc-text-muted);
+  }
+
+  .mc-checkbox {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--color-lavender-400);
+  }
+}
+
+/* ---- The workbench (new in Moon Code) ---- */
+
+@layer components {
+  /* The column of view buttons on the far left. */
+  .mc-activitybar {
+    background: var(--mc-frame);
+    border-right: 1px solid var(--mc-border);
+  }
+  .mc-activity {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 46px;
+    border: 0;
+    background: transparent;
+    color: var(--mc-text-faint);
+    cursor: pointer;
+    transition: color var(--mc-motion);
+  }
+  .mc-activity:hover {
+    color: var(--mc-text);
+  }
+  .mc-activity[aria-pressed="true"] {
+    color: var(--mc-accent);
+  }
+  .mc-activity[aria-pressed="true"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 9px;
+    bottom: 9px;
+    width: 2px;
+    border-radius: 0 2px 2px 0;
+    background: linear-gradient(180deg, var(--color-lavender-300), var(--color-sky-300));
+  }
+  .mc-activity-badge {
+    position: absolute;
+    right: 9px;
+    bottom: 9px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--mc-claude);
+    box-shadow: 0 0 0 2px var(--mc-frame);
+  }
+
+  .mc-sidebar {
+    background: var(--mc-sidebar);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+  .mc-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 2.1rem;
+    padding: 0 0.75rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--mc-text-muted);
+  }
+
+  /* Rows of the file tree, the search results and the project lists. */
+  .mc-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    width: 100%;
+    min-height: 1.6rem;
+    padding: 0 0.5rem;
+    border: 0;
+    border-radius: 0.45rem;
+    background: transparent;
+    color: var(--mc-text);
+    font: inherit;
+    font-size: 0.8125rem;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .mc-row:hover {
+    background: var(--mc-hover);
+  }
+  .mc-row[aria-selected="true"],
+  .mc-row[aria-current="true"] {
+    background: var(--mc-selected);
+  }
+  .mc-row:focus-visible {
+    outline-offset: -2px;
+  }
+
+  /* Editor tabs. */
+  .mc-tabs {
+    background: color-mix(in srgb, var(--mc-frame) 80%, transparent);
+    border-bottom: 1px solid var(--mc-border);
+  }
+  .mc-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    height: 2.25rem;
+    padding: 0 0.4rem 0 0.8rem;
+    border: 0;
+    border-right: 1px solid var(--mc-border);
+    background: transparent;
+    color: var(--mc-text-muted);
+    font: inherit;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .mc-tab:hover {
+    color: var(--mc-text);
+  }
+  .mc-tab[aria-selected="true"] {
+    background: var(--mc-editor);
+    color: var(--mc-text);
+  }
+  .mc-tab[aria-selected="true"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--color-lavender-300), var(--color-sky-300));
+  }
+  .mc-tab-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.3rem;
+    height: 1.3rem;
+    border-radius: 0.35rem;
+    color: var(--mc-text-faint);
+  }
+  .mc-tab-close:hover {
+    background: var(--mc-hover);
+    color: var(--mc-text);
+  }
+  /* The dot of an unsaved file, which becomes the close button on hover. */
+  .mc-dirty {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--mc-accent);
+  }
+
+  .mc-panel {
+    background: var(--mc-panel);
+    border-top: 1px solid var(--mc-border);
+  }
+
+  /* The draggable edge between two areas. */
+  .mc-sash {
+    flex-shrink: 0;
+    background: transparent;
+    transition: background-color var(--mc-motion);
+    z-index: 5;
+  }
+  .mc-sash[data-axis="x"] {
+    width: 4px;
+    margin: 0 -2px;
+    cursor: col-resize;
+  }
+  .mc-sash[data-axis="y"] {
+    height: 4px;
+    margin: -2px 0;
+    cursor: row-resize;
+  }
+  .mc-sash:hover,
+  .mc-sash[data-active="true"] {
+    background: color-mix(in srgb, var(--color-lavender-400) 55%, transparent);
+  }
+
+  .mc-statusbar {
+    background: var(--mc-frame);
+    border-top: 1px solid var(--mc-border);
+    font-size: 0.75rem;
+    color: var(--mc-text-muted);
+  }
+  .mc-status-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    height: 100%;
+    padding: 0 0.55rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .mc-status-item:hover {
+    background: var(--mc-hover);
+    color: var(--mc-text);
+  }
+  /* The Claude part of the status bar, in Claude's mint. */
+  .mc-status-claude {
+    color: var(--mc-claude);
+  }
+
+  /* The Claude conversation. */
+  .mc-msg-user {
+    align-self: flex-end;
+    max-width: 92%;
+    padding: 0.55rem 0.8rem;
+    border-radius: 0.9rem 0.9rem 0.25rem 0.9rem;
+    background: var(--mc-selected);
+    border: 1px solid color-mix(in srgb, var(--color-lavender-400) 28%, transparent);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .mc-msg-assistant {
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+  .mc-msg-assistant p {
+    margin: 0 0 0.5rem;
+    white-space: pre-wrap;
+  }
+  .mc-code {
+    margin: 0.4rem 0 0.7rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--radius-md);
+    background: var(--mc-editor);
+    border: 1px solid var(--mc-border);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .mc-inline-code {
+    padding: 0.05rem 0.3rem;
+    border-radius: 0.3rem;
+    background: var(--mc-inset);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--mc-accent);
+  }
+  .mc-tool {
+    border-radius: var(--radius-md);
+    border: 1px solid var(--mc-border);
+    background: var(--mc-inset);
+    font-size: 0.75rem;
+  }
+  .mc-tool summary {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.6rem;
+    cursor: pointer;
+    list-style: none;
+  }
+  .mc-tool summary::-webkit-details-marker {
+    display: none;
+  }
+  .mc-tool pre {
+    margin: 0;
+    max-height: 16rem;
+    overflow: auto;
+    padding: 0.5rem 0.6rem;
+    border-top: 1px solid var(--mc-border);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--mc-text-muted);
+  }
+  .mc-composer {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--mc-border-strong);
+    background: var(--mc-inset);
+    transition:
+      border-color var(--mc-motion),
+      box-shadow var(--mc-motion);
+  }
+  .mc-composer:focus-within {
+    border-color: color-mix(in srgb, var(--color-lavender-400) 70%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-lavender-400) 18%, transparent);
+  }
+  .mc-composer textarea {
+    display: block;
+    width: 100%;
+    resize: none;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--mc-text);
+    font: inherit;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+  .mc-composer textarea::placeholder {
+    color: var(--mc-text-faint);
+  }
+
+  /* A pulsing dot while Claude works. */
+  .mc-working {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--mc-claude);
+    animation: mc-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes mc-pulse {
+    0%,
+    100% {
+      opacity: 0.35;
+      transform: scale(0.85);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-working {
+    animation: none;
+  }
+}
+
+/* xterm.js inside the panel: the theme colours come from TerminalPanel.tsx. */
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+}

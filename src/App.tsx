@@ -1,0 +1,781 @@
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Sky } from "./theme/Sky";
+import { CloseIcon, PlusIcon, TerminalIcon, FileIcon } from "./theme/icons";
+import { useDocumentTheme } from "./theme/useTheme";
+import { defaultBridge } from "./lib/bridge";
+import { languageName, languageOf, kindColor } from "./lib/languages";
+import { basename, relative, resolveIn } from "./lib/paths";
+import type { ClaudeAccount, MoonCodeBridge, RateLimit, Settings, SysInfo } from "./lib/types";
+import { ActivityBar, Sash, StatusBar, TitleBar, type SideView } from "./workbench/chrome";
+import { ExplorerView } from "./workbench/ExplorerView";
+import { SearchView } from "./workbench/SearchView";
+import { ProjectsView } from "./workbench/ProjectsView";
+import { ClaudePanel, type ClaudeInfo, type ResumeRequest } from "./workbench/ClaudePanel";
+import { QuickOpen, type Command } from "./workbench/QuickOpen";
+import { Welcome } from "./workbench/Welcome";
+import { SettingsDialog } from "./workbench/SettingsDialog";
+
+// Monaco and xterm are big; they load when the first file or terminal opens.
+const CodeEditor = lazy(() => import("./workbench/CodeEditor"));
+const TerminalView = lazy(() => import("./workbench/TerminalView"));
+
+interface Tab {
+  path: string;
+  /** The text on disk (as last loaded or saved). */
+  saved: string;
+  /** The text in the editor. */
+  value: string;
+  language: string;
+}
+
+interface TerminalTab {
+  id: string;
+  title: string;
+  command?: string[] | string;
+}
+
+let terminalSeq = 0;
+
+export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
+  const bridge = useMemo(() => given ?? defaultBridge(), [given]);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [sys, setSys] = useState<SysInfo | null>(null);
+  const [folder, setFolder] = useState<string | null>(null);
+  const [branch, setBranch] = useState<string | null>(null);
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [active, setActive] = useState<string | null>(null);
+  const [view, setView] = useState<SideView | null>("explorer");
+  const [sideWidth, setSideWidth] = useState(270);
+  const [claudeOpen, setClaudeOpen] = useState(true);
+  const [claudeWidth, setClaudeWidth] = useState(400);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelHeight, setPanelHeight] = useState(240);
+  const [terminals, setTerminals] = useState<TerminalTab[]>([]);
+  const [activeTerminal, setActiveTerminal] = useState<string | null>(null);
+  const [account, setAccount] = useState<ClaudeAccount | null>(null);
+  const [limits, setLimits] = useState<RateLimit | null>(null);
+  const [claudeInfo, setClaudeInfo] = useState<ClaudeInfo | null>(null);
+  const [cursor, setCursor] = useState<{ line: number; column: number } | null>(null);
+  const [quick, setQuick] = useState<string | null>(null);
+  const [files, setFiles] = useState<string[] | null>(null);
+  const [reveal, setReveal] = useState<{ line: number; column: number; nonce: number } | null>(
+    null,
+  );
+  const [resume, setResume] = useState<ResumeRequest | null>(null);
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [waitingForLogin, setWaitingForLogin] = useState(false);
+
+  const theme = useDocumentTheme(settings?.theme ?? "dark");
+  useEffect(() => {
+    void bridge.setTheme(theme);
+  }, [bridge, theme]);
+
+  const notify = useCallback((message: string) => setToast(message), []);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const refreshAccount = useCallback(() => {
+    bridge
+      .claudeStatus()
+      .then(setAccount)
+      .catch(() =>
+        setAccount({
+          installed: false,
+          exe: null,
+          version: null,
+          loggedIn: false,
+          authMethod: null,
+          email: null,
+          organization: null,
+          plan: null,
+        }),
+      );
+  }, [bridge]);
+
+  // ---------------------------------------------------------------- folders and files
+
+  const openFolder = useCallback(
+    async (path: string) => {
+      const dirty = tabs.filter((t) => t.value !== t.saved);
+      if (
+        dirty.length &&
+        !window.confirm(`${dirty.length} file(s) have unsaved changes. Open another folder anyway?`)
+      ) {
+        return;
+      }
+      if (tabs.length) {
+        const mod = await import("./workbench/monaco-models");
+        for (const t of tabs) mod.disposeModel(t.path);
+      }
+      setTabs([]);
+      setActive(null);
+      setCursor(null);
+      setFiles(null);
+      setFolder(path);
+      setView((v) => v ?? "explorer");
+      bridge
+        .folderOpened(path)
+        .then(setSettings)
+        .catch(() => {});
+      bridge
+        .gitBranch(path)
+        .then(setBranch)
+        .catch(() => setBranch(null));
+      void bridge.setTitle(`${basename(path)} – Moon Code`);
+    },
+    [bridge, tabs],
+  );
+
+  const pickFolder = useCallback(async () => {
+    const p = await bridge.pickFolder();
+    if (p) await openFolder(p);
+  }, [bridge, openFolder]);
+
+  // Start: settings, the machine, Claude, and the last folder.
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void (async () => {
+      const [s, i] = await Promise.all([bridge.getSettings(), bridge.info()]);
+      setSettings(s);
+      setSys(i);
+      setLimits(s.lastRateLimit);
+      if (s.lastFolder) {
+        setFolder(s.lastFolder);
+        bridge
+          .gitBranch(s.lastFolder)
+          .then(setBranch)
+          .catch(() => {});
+        void bridge.setTitle(`${basename(s.lastFolder)} – Moon Code`);
+      }
+    })();
+    refreshAccount();
+  }, [bridge, refreshAccount]);
+
+  // While the sign-in runs in the terminal, look for the account every few seconds.
+  useEffect(() => {
+    if (!waitingForLogin) return;
+    const t = setInterval(() => {
+      bridge
+        .claudeStatus()
+        .then((a) => {
+          setAccount(a);
+          if (a.loggedIn) {
+            setWaitingForLogin(false);
+            setView("projects");
+            notify(`Signed in${a.email ? ` as ${a.email}` : ""}. Your projects are in Projects.`);
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+    return () => clearInterval(t);
+  }, [bridge, waitingForLogin, notify]);
+
+  const openFile = useCallback(
+    async (path: string, at?: { line: number; column: number }) => {
+      if (at) setReveal({ ...at, nonce: Date.now() });
+      if (tabs.some((t) => t.path === path)) {
+        setActive(path);
+        return;
+      }
+      try {
+        const text = await bridge.readFile(path);
+        setTabs((ts) =>
+          ts.some((t) => t.path === path)
+            ? ts
+            : [...ts, { path, saved: text, value: text, language: languageOf(path) }],
+        );
+        setActive(path);
+      } catch (e) {
+        notify((e as Error).message);
+      }
+    },
+    [bridge, tabs, notify],
+  );
+
+  const closeTab = useCallback(
+    (path: string) => {
+      const tab = tabs.find((t) => t.path === path);
+      if (
+        tab &&
+        tab.value !== tab.saved &&
+        !window.confirm(`${basename(path)} has unsaved changes. Close it anyway?`)
+      ) {
+        return;
+      }
+      const i = tabs.findIndex((t) => t.path === path);
+      const rest = tabs.filter((t) => t.path !== path);
+      setTabs(rest);
+      if (active === path) setActive(rest.length ? rest[Math.min(i, rest.length - 1)].path : null);
+      void import("./workbench/monaco-models").then((m) => m.disposeModel(path));
+    },
+    [tabs, active],
+  );
+
+  const save = useCallback(async () => {
+    const tab = tabs.find((t) => t.path === active);
+    if (!tab) return;
+    try {
+      await bridge.writeFile(tab.path, tab.value);
+      setTabs((ts) => ts.map((t) => (t.path === tab.path ? { ...t, saved: tab.value } : t)));
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  }, [bridge, tabs, active, notify]);
+
+  const onEdit = useCallback((path: string, value: string) => {
+    setTabs((ts) => ts.map((t) => (t.path === path ? { ...t, value } : t)));
+  }, []);
+
+  const onRenamed = useCallback((from: string, to: string) => {
+    setTabs((ts) =>
+      ts.map((t) => (t.path === from ? { ...t, path: to, language: languageOf(to) } : t)),
+    );
+    setActive((a) => (a === from ? to : a));
+    void import("./workbench/monaco-models").then((m) => m.disposeModel(from));
+  }, []);
+
+  const onDeleted = useCallback((path: string) => {
+    setTabs((ts) =>
+      ts.filter(
+        (t) => t.path !== path && !t.path.startsWith(`${path}/`) && !t.path.startsWith(`${path}\\`),
+      ),
+    );
+    setActive((a) =>
+      a && (a === path || a.startsWith(`${path}/`) || a.startsWith(`${path}\\`)) ? null : a,
+    );
+  }, []);
+
+  // ---------------------------------------------------------------- panels
+
+  const newTerminal = useCallback((command?: string[] | string, title = "Terminal") => {
+    const id = `term-${++terminalSeq}`;
+    setTerminals((t) => [...t, { id, title, command }]);
+    setActiveTerminal(id);
+    setPanelOpen(true);
+  }, []);
+
+  const togglePanel = useCallback(() => {
+    setPanelOpen((open) => {
+      if (!open && terminals.length === 0) {
+        const id = `term-${++terminalSeq}`;
+        setTerminals([{ id, title: "Terminal" }]);
+        setActiveTerminal(id);
+      }
+      return !open;
+    });
+  }, [terminals.length]);
+
+  const closeTerminal = (id: string) => {
+    const rest = terminals.filter((t) => t.id !== id);
+    setTerminals(rest);
+    if (activeTerminal === id) setActiveTerminal(rest.length ? rest[rest.length - 1].id : null);
+    if (!rest.length) setPanelOpen(false);
+  };
+
+  const signIn = useCallback(() => {
+    newTerminal(["claude", "auth", "login"], "Sign in to Claude");
+    setWaitingForLogin(true);
+    setClaudeOpen(true);
+  }, [newTerminal]);
+
+  const installClaude = useCallback(() => {
+    const win = sys?.platform === "win32";
+    newTerminal(
+      win
+        ? "irm https://claude.ai/install.ps1 | iex"
+        : "curl -fsSL https://claude.ai/install.sh | bash",
+      "Install Claude Code",
+    );
+  }, [newTerminal, sys]);
+
+  const toggleView = useCallback((v: SideView) => setView((cur) => (cur === v ? null : v)), []);
+
+  const updateSettings = useCallback(
+    (patch: Partial<Settings>) => {
+      setSettings((s) => (s ? { ...s, ...patch } : s));
+      bridge.setSettings(patch).catch(() => {});
+    },
+    [bridge],
+  );
+
+  const onLimits = useCallback(
+    (rl: RateLimit) => {
+      setLimits(rl);
+      bridge.setSettings({ lastRateLimit: rl }).catch(() => {});
+    },
+    [bridge],
+  );
+
+  const openQuick = useCallback(
+    (initial: string) => {
+      setQuick(initial);
+      if (folder && !files && !initial.startsWith(">")) {
+        bridge
+          .listFiles(folder)
+          .then(setFiles)
+          .catch(() => setFiles([]));
+      }
+    },
+    [bridge, folder, files],
+  );
+
+  const askClaude = useCallback(
+    (selection: string) => {
+      setClaudeOpen(true);
+      const where = active && folder ? `@${relative(folder, active)}` : "";
+      const text = selection
+        ? `${where ? `In ${where}:` : ""}\n\`\`\`\n${selection}\n\`\`\`\n`
+        : where;
+      setPrefill({ text, nonce: Date.now() });
+    },
+    [active, folder],
+  );
+
+  const commands: Command[] = useMemo(
+    () => [
+      { id: "open-folder", label: "Open folder…", run: () => void pickFolder() },
+      { id: "save", label: "Save", keys: "Ctrl+S", run: () => void save() },
+      {
+        id: "close-tab",
+        label: "Close editor",
+        keys: "Ctrl+W",
+        run: () => active && closeTab(active),
+      },
+      {
+        id: "claude",
+        label: "Claude: Open the chat",
+        keys: "Ctrl+L",
+        run: () => setClaudeOpen(true),
+      },
+      { id: "claude-ask", label: "Claude: Ask about the open file", run: () => askClaude("") },
+      { id: "claude-signin", label: "Claude: Sign in", run: signIn },
+      { id: "claude-status", label: "Claude: Refresh account and limits", run: refreshAccount },
+      {
+        id: "projects",
+        label: "Show projects",
+        keys: "Ctrl+Shift+O",
+        run: () => setView("projects"),
+      },
+      {
+        id: "explorer",
+        label: "Show explorer",
+        keys: "Ctrl+Shift+E",
+        run: () => setView("explorer"),
+      },
+      {
+        id: "search",
+        label: "Search in files",
+        keys: "Ctrl+Shift+F",
+        run: () => setView("search"),
+      },
+      { id: "terminal", label: "New terminal", keys: "Ctrl+Shift+`", run: () => newTerminal() },
+      { id: "toggle-terminal", label: "Toggle terminal", keys: "Ctrl+`", run: togglePanel },
+      {
+        id: "sidebar",
+        label: "Toggle side bar",
+        keys: "Ctrl+B",
+        run: () => setView((v) => (v ? null : "explorer")),
+      },
+      {
+        id: "theme",
+        label: "Switch night / day theme",
+        run: () => updateSettings({ theme: theme === "dark" ? "light" : "dark" }),
+      },
+      { id: "settings", label: "Settings", keys: "Ctrl+,", run: () => setShowSettings(true) },
+      { id: "devtools", label: "Developer tools", run: () => void bridge.devtools() },
+    ],
+    [
+      pickFolder,
+      save,
+      active,
+      closeTab,
+      askClaude,
+      signIn,
+      refreshAccount,
+      newTerminal,
+      togglePanel,
+      updateSettings,
+      theme,
+      bridge,
+    ],
+  );
+
+  // Keyboard shortcuts of the whole window.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const k = e.key.toLowerCase();
+      let handled = true;
+      if (k === "s" && !e.shiftKey) void save();
+      else if (k === "p" && e.shiftKey) openQuick(">");
+      else if (k === "p") openQuick("");
+      else if (k === "b" && !e.shiftKey) setView((v) => (v ? null : "explorer"));
+      else if (k === "e" && e.shiftKey) setView("explorer");
+      else if (k === "f" && e.shiftKey) setView("search");
+      else if (k === "o" && e.shiftKey) setView("projects");
+      else if (k === "l" && !e.shiftKey) setClaudeOpen((o) => !o);
+      else if (e.code === "Backquote" && e.shiftKey) newTerminal();
+      else if (e.code === "Backquote") togglePanel();
+      else if (k === "w" && active) closeTab(active);
+      else if (k === ",") setShowSettings(true);
+      else if (k === "o" && !e.shiftKey) void pickFolder();
+      else handled = false;
+      if (handled) e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [save, openQuick, newTerminal, togglePanel, active, closeTab, pickFolder]);
+
+  const activeTab = tabs.find((t) => t.path === active) ?? null;
+  const editorActions = useMemo(
+    () => ({
+      save: () => void save(),
+      quickOpen: () => openQuick(""),
+      commands: () => openQuick(">"),
+      askClaude,
+    }),
+    [save, openQuick, askClaude],
+  );
+
+  if (!settings) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Sky />
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative flex h-full flex-col">
+      <Sky />
+      <TitleBar
+        folderName={folder ? basename(folder) : null}
+        onQuickOpen={() => openQuick("")}
+        onOpenFolder={() => void pickFolder()}
+      />
+      <div className="relative z-[1] flex min-h-0 flex-1">
+        <ActivityBar
+          view={view}
+          claudeOpen={claudeOpen}
+          claudeBusy={Boolean(claudeInfo?.busy)}
+          onView={toggleView}
+          onClaude={() => setClaudeOpen((o) => !o)}
+          onAccount={() => {
+            setClaudeOpen(true);
+            refreshAccount();
+          }}
+          onSettings={() => setShowSettings(true)}
+        />
+        {view && (
+          <>
+            <div className="mc-sidebar flex min-h-0 shrink-0 flex-col" style={{ width: sideWidth }}>
+              {view === "explorer" && (
+                <ExplorerView
+                  key={folder ?? ""}
+                  bridge={bridge}
+                  root={folder}
+                  activePath={active}
+                  onOpenFile={(p) => void openFile(p)}
+                  onOpenFolder={() => void pickFolder()}
+                  onRenamed={onRenamed}
+                  onDeleted={onDeleted}
+                  onError={notify}
+                />
+              )}
+              {view === "search" && (
+                <SearchView
+                  bridge={bridge}
+                  root={folder}
+                  onOpen={(p, line, column) => void openFile(p, { line, column })}
+                />
+              )}
+              {view === "projects" && (
+                <ProjectsView
+                  bridge={bridge}
+                  account={account}
+                  home={sys?.home ?? null}
+                  currentFolder={folder}
+                  onOpenFolder={(p) => void openFolder(p)}
+                  onResume={(p, s) => {
+                    void (async () => {
+                      if (p !== folder) await openFolder(p);
+                      setClaudeOpen(true);
+                      setResume({ sessionId: s.id, title: s.title, nonce: Date.now() });
+                    })();
+                  }}
+                  onSignIn={signIn}
+                  onError={notify}
+                />
+              )}
+            </div>
+            <Sash
+              axis="x"
+              size={sideWidth}
+              min={180}
+              max={560}
+              onResize={setSideWidth}
+              label="Resize the side bar"
+            />
+          </>
+        )}
+
+        <main className="flex min-w-0 flex-1 flex-col">
+          {tabs.length > 0 && (
+            <div
+              className="mc-tabs flex shrink-0 overflow-x-auto"
+              role="tablist"
+              aria-label="Open files"
+            >
+              {tabs.map((t) => {
+                const dirty = t.value !== t.saved;
+                return (
+                  <div
+                    key={t.path}
+                    role="tab"
+                    tabIndex={0}
+                    aria-selected={t.path === active}
+                    className="mc-tab group"
+                    title={folder ? relative(folder, t.path) : t.path}
+                    onClick={() => setActive(t.path)}
+                    onKeyDown={(e) => e.key === "Enter" && setActive(t.path)}
+                    onMouseDown={(e) => {
+                      if (e.button === 1) {
+                        e.preventDefault();
+                        closeTab(t.path);
+                      }
+                    }}
+                  >
+                    <span style={{ color: kindColor(t.path) }}>
+                      <FileIcon size={14} />
+                    </span>
+                    {basename(t.path)}
+                    <button
+                      type="button"
+                      className="mc-tab-close border-0 bg-transparent p-0"
+                      aria-label={`Close ${basename(t.path)}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closeTab(t.path);
+                      }}
+                    >
+                      {dirty ? (
+                        <>
+                          <span className="mc-dirty group-hover:hidden" />
+                          <span className="hidden group-hover:inline-flex">
+                            <CloseIcon size={12} />
+                          </span>
+                        </>
+                      ) : (
+                        <CloseIcon size={12} />
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div
+            className="relative min-h-0 flex-1"
+            style={{ background: activeTab ? "var(--mc-editor)" : undefined }}
+          >
+            {activeTab ? (
+              <Suspense fallback={null}>
+                <CodeEditor
+                  path={activeTab.path}
+                  text={activeTab.saved}
+                  language={activeTab.language}
+                  theme={theme}
+                  fontSize={settings.fontSize}
+                  wordWrap={settings.wordWrap}
+                  minimap={settings.minimap}
+                  reveal={reveal}
+                  actions={editorActions}
+                  onChange={onEdit}
+                  onCursor={setCursor}
+                />
+              </Suspense>
+            ) : (
+              <Welcome
+                recent={settings.recent}
+                home={sys?.home ?? null}
+                folder={folder}
+                onOpenFolder={() => void pickFolder()}
+                onOpenRecent={(p) => void openFolder(p)}
+                onProjects={() => setView("projects")}
+                onClaude={() => setClaudeOpen(true)}
+              />
+            )}
+          </div>
+
+          {panelOpen && (
+            <Sash
+              axis="y"
+              size={panelHeight}
+              min={100}
+              max={700}
+              invert
+              onResize={setPanelHeight}
+              label="Resize the terminal"
+            />
+          )}
+          <section
+            className="mc-panel flex shrink-0 flex-col"
+            style={{ height: panelHeight, display: panelOpen ? "flex" : "none" }}
+            aria-label="Terminal"
+          >
+            <div className="flex h-8 shrink-0 items-center gap-1 px-2">
+              <span className="mc-eyebrow mr-2">Terminal</span>
+              {terminals.map((t) => (
+                <span key={t.id} className="inline-flex items-center">
+                  <button
+                    type="button"
+                    className="mc-btn mc-btn-sm"
+                    aria-pressed={t.id === activeTerminal}
+                    style={{ color: t.id === activeTerminal ? "var(--mc-accent)" : undefined }}
+                    onClick={() => setActiveTerminal(t.id)}
+                  >
+                    <TerminalIcon size={12} /> {t.title}
+                  </button>
+                  <button
+                    type="button"
+                    className="mc-icon-btn"
+                    style={{ width: 20, height: 20 }}
+                    aria-label={`Close ${t.title}`}
+                    onClick={() => closeTerminal(t.id)}
+                  >
+                    <CloseIcon size={11} />
+                  </button>
+                </span>
+              ))}
+              <button
+                type="button"
+                className="mc-icon-btn"
+                style={{ width: 24, height: 24 }}
+                aria-label="New terminal"
+                title="New terminal"
+                onClick={() => newTerminal()}
+              >
+                <PlusIcon size={14} />
+              </button>
+              <span className="flex-1" />
+              <button
+                type="button"
+                className="mc-icon-btn"
+                style={{ width: 24, height: 24 }}
+                aria-label="Hide the terminal"
+                onClick={() => setPanelOpen(false)}
+              >
+                <CloseIcon size={13} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <Suspense fallback={null}>
+                {terminals.map((t) => (
+                  <TerminalView
+                    key={t.id}
+                    bridge={bridge}
+                    id={t.id}
+                    cwd={folder}
+                    command={t.command}
+                    theme={theme}
+                    visible={panelOpen && t.id === activeTerminal}
+                  />
+                ))}
+              </Suspense>
+            </div>
+          </section>
+        </main>
+
+        {claudeOpen && (
+          <>
+            <Sash
+              axis="x"
+              size={claudeWidth}
+              min={300}
+              max={760}
+              invert
+              onResize={setClaudeWidth}
+              label="Resize Claude"
+            />
+            <div
+              className="flex min-h-0 shrink-0 flex-col border-l border-[var(--mc-border)]"
+              style={{ width: claudeWidth }}
+            >
+              <ClaudePanel
+                bridge={bridge}
+                account={account}
+                folder={folder}
+                activeFile={active}
+                settings={settings}
+                limits={limits}
+                resume={resume}
+                prefill={prefill}
+                onSettings={updateSettings}
+                onLimits={onLimits}
+                onInfo={setClaudeInfo}
+                onSignIn={signIn}
+                onInstall={installClaude}
+                onRefreshAccount={refreshAccount}
+                onClose={() => setClaudeOpen(false)}
+                onOpenFile={(p) =>
+                  void openFile(folder && !/^([a-zA-Z]:)?[\\/]/.test(p) ? resolveIn(folder, p) : p)
+                }
+              />
+            </div>
+          </>
+        )}
+      </div>
+      <StatusBar
+        branch={branch}
+        cursor={activeTab ? cursor : null}
+        language={activeTab ? languageName(activeTab.language) : null}
+        model={claudeInfo?.model ?? settings.claudeModel}
+        limits={account?.loggedIn ? limits : null}
+        context={
+          claudeInfo?.contextTokens != null
+            ? { used: claudeInfo.contextTokens, window: claudeInfo.contextWindow }
+            : null
+        }
+        signedIn={account ? account.loggedIn : null}
+        theme={theme}
+        panelOpen={panelOpen}
+        onToggleTheme={() => updateSettings({ theme: theme === "dark" ? "light" : "dark" })}
+        onTogglePanel={togglePanel}
+        onClaude={() => setClaudeOpen(true)}
+      />
+
+      {quick !== null && (
+        <QuickOpen
+          files={folder ? files : null}
+          commands={commands}
+          initial={quick}
+          onOpenFile={(rel) => folder && void openFile(resolveIn(folder, rel))}
+          onClose={() => setQuick(null)}
+        />
+      )}
+      {showSettings && (
+        <SettingsDialog
+          settings={settings}
+          onChange={updateSettings}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+      {toast && (
+        <div
+          role="status"
+          className="mc-popover fixed bottom-9 left-1/2 z-50 -translate-x-1/2 px-4 py-2 text-[0.8125rem]"
+        >
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}

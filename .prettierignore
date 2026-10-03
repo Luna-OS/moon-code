@@ -1,0 +1,8 @@
+dist
+node_modules
+package-lock.json
+release
+.claude
+
+# Markdown is reviewed by hand; Prettier's table padding makes noisy diffs.
+*.md
