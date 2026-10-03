@@ -19,6 +19,42 @@ the official `claude` program, which you install once:
 | Check limits now | `claude -p "Reply with OK." --model haiku --tools "" --no-session-persistence` – the smallest possible request |
 | Sign out | `claude auth logout` |
 
+## GitHub
+
+Moon Code signs in to GitHub through the official GitHub CLI, so it never sees a token either:
+
+| Step | What Moon Code runs |
+| --- | --- |
+| Find it | `gh` on the PATH, `Program Files\GitHub CLI` (or `/usr/local/bin`, `/opt/homebrew/bin`) |
+| Install it | `winget install --id GitHub.cli -e --source winget` (Windows), `brew install gh` (macOS) |
+| Sign in | `gh auth login --hostname github.com --web --git-protocol https` in a terminal tab |
+| Who is signed in | `gh api user` – the login, the name and the avatar |
+| Sign out | `gh auth logout --hostname github.com` in a terminal tab |
+
+## Cloud
+
+The **Cloud** view hands work to Claude Code on the web. It needs your Claude account, your GitHub
+account and a folder whose `origin` is a GitHub repository (the first time, claude.ai/code asks to
+connect the repository through Claude's GitHub app). Every action runs your Claude Code in a
+terminal tab:
+
+| Button | What runs |
+| --- | --- |
+| Start in the cloud | `claude --cloud "<the task>"` – a new cloud session on the repository |
+| Attach | `claude --cloud <session link or ID>` |
+| Bring one here | `claude --teleport` – pick a cloud session and continue it on this computer |
+| Remote Control | `claude --remote-control <folder name>` – steer this session from your phone or claude.ai |
+| Ultrareview | `claude ultrareview` – a cloud review of the current branch by several agents |
+| Open claude.ai/code | the web app, to follow and review cloud sessions |
+
+The tasks you start are listed under "Started from Moon Code".
+
+## Axo
+
+Axo, the white pixel axolotl in the Claude panel, shows what Claude is up to: asleep (not signed
+in), waiting (it blinks), coding (it types on its moon laptop, and the line next to it says what
+Claude is doing – "Editing src/App.tsx…"), and done (it cheers for a moment). Settings can hide it.
+
 ## Projects
 
 After you sign in, **Projects** lists:

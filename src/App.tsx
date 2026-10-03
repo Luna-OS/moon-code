@@ -5,7 +5,15 @@ import { useDocumentTheme } from "./theme/useTheme";
 import { defaultBridge } from "./lib/bridge";
 import { languageName, languageOf, kindColor } from "./lib/languages";
 import { basename, relative, resolveIn } from "./lib/paths";
-import type { ClaudeAccount, MoonCodeBridge, RateLimit, Settings, SysInfo } from "./lib/types";
+import type {
+  ClaudeAccount,
+  CloudTask,
+  GitHubAccount,
+  MoonCodeBridge,
+  RateLimit,
+  Settings,
+  SysInfo,
+} from "./lib/types";
 import { ActivityBar, Sash, StatusBar, TitleBar, type SideView } from "./workbench/chrome";
 import { ExplorerView } from "./workbench/ExplorerView";
 import { SearchView } from "./workbench/SearchView";
@@ -14,6 +22,7 @@ import { ClaudePanel, type ClaudeInfo, type ResumeRequest } from "./workbench/Cl
 import { QuickOpen, type Command } from "./workbench/QuickOpen";
 import { Welcome } from "./workbench/Welcome";
 import { SettingsDialog } from "./workbench/SettingsDialog";
+import { CloudView } from "./workbench/CloudView";
 
 // Monaco and xterm are big; they load when the first file or terminal opens.
 const CodeEditor = lazy(() => import("./workbench/CodeEditor"));
@@ -66,6 +75,11 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
   const [toast, setToast] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [waitingForLogin, setWaitingForLogin] = useState(false);
+  const [github, setGithub] = useState<GitHubAccount | null>(null);
+  /** Polling for the GitHub account while `gh auth login` / `logout` runs in a terminal. */
+  const [waitingForGithub, setWaitingForGithub] = useState<"in" | "out" | null>(null);
+  /** "owner/name" of the open folder's GitHub remote. */
+  const [repo, setRepo] = useState<string | null>(null);
 
   const theme = useDocumentTheme(settings?.theme ?? "dark");
   useEffect(() => {
@@ -97,6 +111,38 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       );
   }, [bridge]);
 
+  const refreshGithub = useCallback(() => {
+    bridge
+      .githubAccount()
+      .then(setGithub)
+      .catch(() =>
+        setGithub({
+          installed: false,
+          exe: null,
+          loggedIn: false,
+          login: null,
+          name: null,
+          url: null,
+          avatar: null,
+        }),
+      );
+  }, [bridge]);
+
+  /** The branch and the GitHub repository of a folder, for the status bar and the cloud. */
+  const loadGitInfo = useCallback(
+    (path: string) => {
+      bridge
+        .gitBranch(path)
+        .then(setBranch)
+        .catch(() => setBranch(null));
+      bridge
+        .gitHubRepo(path)
+        .then(setRepo)
+        .catch(() => setRepo(null));
+    },
+    [bridge],
+  );
+
   // ---------------------------------------------------------------- folders and files
 
   const openFolder = useCallback(
@@ -122,13 +168,10 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
         .folderOpened(path)
         .then(setSettings)
         .catch(() => {});
-      bridge
-        .gitBranch(path)
-        .then(setBranch)
-        .catch(() => setBranch(null));
+      loadGitInfo(path);
       void bridge.setTitle(`${basename(path)} – Moon Code`);
     },
-    [bridge, tabs],
+    [bridge, tabs, loadGitInfo],
   );
 
   const pickFolder = useCallback(async () => {
@@ -148,15 +191,33 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       setLimits(s.lastRateLimit);
       if (s.lastFolder) {
         setFolder(s.lastFolder);
-        bridge
-          .gitBranch(s.lastFolder)
-          .then(setBranch)
-          .catch(() => {});
+        loadGitInfo(s.lastFolder);
         void bridge.setTitle(`${basename(s.lastFolder)} – Moon Code`);
       }
     })();
     refreshAccount();
-  }, [bridge, refreshAccount]);
+    refreshGithub();
+  }, [bridge, refreshAccount, refreshGithub, loadGitInfo]);
+
+  // While `gh auth login` (or logout) runs in a terminal, look for the change every few seconds.
+  useEffect(() => {
+    if (!waitingForGithub) return;
+    const t = setInterval(() => {
+      bridge
+        .githubAccount()
+        .then((a) => {
+          setGithub(a);
+          if (waitingForGithub === "in" && a.loggedIn) {
+            setWaitingForGithub(null);
+            notify(`Signed in to GitHub as @${a.login}.`);
+          } else if (waitingForGithub === "out" && !a.loggedIn) {
+            setWaitingForGithub(null);
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+    return () => clearInterval(t);
+  }, [bridge, waitingForGithub, notify]);
 
   // While the sign-in runs in the terminal, look for the account every few seconds.
   useEffect(() => {
@@ -279,11 +340,53 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
     if (!rest.length) setPanelOpen(false);
   };
 
+  const claudeExe = account?.exe ?? "claude";
   const signIn = useCallback(() => {
-    newTerminal(["claude", "auth", "login"], "Sign in to Claude");
+    newTerminal([claudeExe, "auth", "login"], "Sign in to Claude");
     setWaitingForLogin(true);
     setClaudeOpen(true);
-  }, [newTerminal]);
+  }, [newTerminal, claudeExe]);
+
+  /** Runs `claude <args>` in a new terminal tab (the cloud commands are interactive). */
+  const runClaude = useCallback(
+    (args: string[], title: string) => newTerminal([claudeExe, ...args], title),
+    [newTerminal, claudeExe],
+  );
+
+  const ghExe = github?.exe ?? "gh";
+  const githubSignIn = useCallback(() => {
+    newTerminal(
+      [ghExe, "auth", "login", "--hostname", "github.com", "--web", "--git-protocol", "https"],
+      "Sign in to GitHub",
+    );
+    setWaitingForGithub("in");
+  }, [newTerminal, ghExe]);
+
+  const githubSignOut = useCallback(() => {
+    newTerminal([ghExe, "auth", "logout", "--hostname", "github.com"], "Sign out of GitHub");
+    setWaitingForGithub("out");
+  }, [newTerminal, ghExe]);
+
+  const installGithub = useCallback(() => {
+    if (sys?.platform === "win32") {
+      newTerminal("winget install --id GitHub.cli -e --source winget", "Install GitHub CLI");
+    } else if (sys?.platform === "darwin") {
+      newTerminal("brew install gh", "Install GitHub CLI");
+    } else {
+      void bridge.openExternal("https://cli.github.com");
+    }
+  }, [newTerminal, sys, bridge]);
+
+  const addCloudTask = useCallback(
+    (task: CloudTask) =>
+      setSettings((s) => {
+        if (!s) return s;
+        const cloudTasks = [task, ...s.cloudTasks].slice(0, 30);
+        bridge.setSettings({ cloudTasks }).catch(() => {});
+        return { ...s, cloudTasks };
+      }),
+    [bridge],
+  );
 
   const installClaude = useCallback(() => {
     const win = sys?.platform === "win32";
@@ -356,6 +459,8 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       },
       { id: "claude-ask", label: "Claude: Ask about the open file", run: () => askClaude("") },
       { id: "claude-signin", label: "Claude: Sign in", run: signIn },
+      { id: "github-signin", label: "GitHub: Sign in", run: githubSignIn },
+      { id: "cloud", label: "Cloud: New task for Claude on the web", run: () => setView("cloud") },
       { id: "claude-status", label: "Claude: Refresh account and limits", run: refreshAccount },
       {
         id: "projects",
@@ -398,6 +503,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       closeTab,
       askClaude,
       signIn,
+      githubSignIn,
       refreshAccount,
       newTerminal,
       togglePanel,
@@ -513,6 +619,28 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                   }}
                   onSignIn={signIn}
                   onError={notify}
+                  github={github}
+                  onGitHubSignIn={githubSignIn}
+                  onGitHubSignOut={githubSignOut}
+                  onGitHubInstall={installGithub}
+                  onGitHubRefresh={refreshGithub}
+                />
+              )}
+              {view === "cloud" && (
+                <CloudView
+                  claude={account}
+                  github={github}
+                  folder={folder}
+                  repo={repo}
+                  tasks={settings.cloudTasks ?? []}
+                  onRun={runClaude}
+                  onTaskStarted={addCloudTask}
+                  onClaudeSignIn={signIn}
+                  onGitHubSignIn={githubSignIn}
+                  onGitHubSignOut={githubSignOut}
+                  onGitHubInstall={installGithub}
+                  onGitHubRefresh={refreshGithub}
+                  onOpen={(url) => void bridge.openExternal(url)}
                 />
               )}
             </div>
@@ -745,6 +873,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
             : null
         }
         signedIn={account ? account.loggedIn : null}
+        busy={Boolean(claudeInfo?.busy) && settings.mascot !== false}
         theme={theme}
         panelOpen={panelOpen}
         onToggleTheme={() => updateSettings({ theme: theme === "dark" ? "light" : "dark" })}

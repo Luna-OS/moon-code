@@ -92,6 +92,14 @@ export function SettingsDialog({
             checked={settings.wordWrap}
             onChange={(e) => onChange({ wordWrap: e.target.checked })}
           />
+          <label htmlFor="mc-mascot">Axo, the axolotl, in the Claude panel</label>
+          <input
+            id="mc-mascot"
+            type="checkbox"
+            className="mc-switch"
+            checked={settings.mascot !== false}
+            onChange={(e) => onChange({ mascot: e.target.checked })}
+          />
           <label htmlFor="mc-minimap">Minimap</label>
           <input
             id="mc-minimap"

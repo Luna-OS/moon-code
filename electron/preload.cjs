@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld("moonCode", {
   listFiles: (root) => call("fs:listFiles", root),
   search: (root, opts) => call("fs:search", root, opts),
   gitBranch: (root) => call("git:branch", root),
+  gitHubRepo: (root) => call("git:githubRepo", root),
 
   terminalStart: (id, opts) => call("terminal:start", id, opts),
   terminalWrite: (id, data) => call("terminal:write", id, data),
@@ -49,6 +50,7 @@ contextBridge.exposeInMainWorld("moonCode", {
   claudeStop: (chatId) => call("claude:stop", chatId),
   claudeCheckLimits: () => call("claude:checkLimits"),
 
+  githubAccount: () => call("github:account"),
   githubRepos: () => call("github:repos"),
   githubClone: (cloneUrl, name) => call("github:clone", cloneUrl, name),
 

@@ -2,10 +2,10 @@
 // Finds the user's Claude Code CLI and builds its command lines. Moon Code never talks to the
 // Claude API itself: it runs the official `claude` program, which signs in, keeps the login and
 // counts the plan's limits on its own.
-const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
+const { findProgram } = require("../programs.cjs");
 
 const isWindows = process.platform === "win32";
 
@@ -20,22 +20,7 @@ function knownLocations(home = os.homedir(), env = process.env) {
 
 /** The full path of `claude` (a configured one first), or null when it isn't installed. */
 function findClaude(configured, env = process.env) {
-  const candidates = [];
-  if (configured) candidates.push(configured);
-  const exts = isWindows ? (env.PATHEXT || ".EXE;.CMD").toLowerCase().split(";") : [""];
-  for (const dir of (env.PATH || env.Path || "").split(path.delimiter)) {
-    if (!dir) continue;
-    for (const ext of exts) candidates.push(path.join(dir, `claude${ext}`));
-  }
-  candidates.push(...knownLocations(os.homedir(), env));
-  for (const c of candidates) {
-    try {
-      if (fs.statSync(c).isFile()) return c;
-    } catch {
-      // not here
-    }
-  }
-  return null;
+  return findProgram("claude", { configured, extra: knownLocations(os.homedir(), env), env });
 }
 
 /** The permission modes Claude Code knows (`--permission-mode`). */

@@ -1,10 +1,32 @@
 "use strict";
-// The GitHub repositories next to the local Claude projects: the ones of the signed-in GitHub CLI
-// (`gh`) when it is there, else the public repositories of the configured owner. A repository can
-// be cloned into the projects folder and opened.
+// GitHub through the official GitHub CLI (`gh`): who is signed in (gh keeps the login; Moon Code
+// never sees its token), the repositories next to the local Claude projects – the signed-in
+// account's, else the public ones of the configured owner – and cloning one into the projects
+// folder.
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { execFile, spawn } = require("child_process");
+const { findProgram } = require("./programs.cjs");
+
+/** Where the GitHub CLI installers put `gh`, besides the PATH. */
+function ghLocations(env = process.env) {
+  if (process.platform === "win32") {
+    return [
+      path.join(env.ProgramFiles || "C:\\Program Files", "GitHub CLI", "gh.exe"),
+      path.join(
+        env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
+        "Programs",
+        "GitHub CLI",
+        "gh.exe",
+      ),
+    ];
+  }
+  return ["/usr/local/bin/gh", "/opt/homebrew/bin/gh", "/usr/bin/gh"];
+}
+
+/** The full path of `gh`, or null when the GitHub CLI isn't installed. */
+const findGh = (env = process.env) => findProgram("gh", { extra: ghLocations(env), env });
 
 function run(file, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -12,6 +34,55 @@ function run(file, args, opts = {}) {
       err ? reject(Object.assign(err, { stderr })) : resolve(stdout),
     );
   });
+}
+
+/** The account fields the UI shows, from `gh api user`. */
+function parseUser(u) {
+  return {
+    login: u.login,
+    name: u.name || null,
+    url: u.html_url || `https://github.com/${u.login}`,
+  };
+}
+
+/**
+ * { installed, exe, loggedIn, login, name, url, avatar } – `avatar` is a data: URL, fetched here
+ * because the page's Content Security Policy keeps remote images out.
+ */
+async function account(fetchImpl) {
+  const exe = findGh();
+  const none = {
+    installed: Boolean(exe),
+    exe,
+    loggedIn: false,
+    login: null,
+    name: null,
+    url: null,
+    avatar: null,
+  };
+  if (!exe) return none;
+  let user;
+  try {
+    user = JSON.parse(await run(exe, ["api", "user"], { timeout: 15_000 }));
+  } catch {
+    return none;
+  }
+  if (!user || !user.login) return none;
+  let avatar = null;
+  if (user.avatar_url && fetchImpl) {
+    try {
+      const res = await fetchImpl(
+        `${user.avatar_url}${user.avatar_url.includes("?") ? "&" : "?"}s=64`,
+      );
+      if (res.ok) {
+        const type = res.headers.get("content-type") || "image/png";
+        avatar = `data:${type};base64,${Buffer.from(await res.arrayBuffer()).toString("base64")}`;
+      }
+    } catch {
+      // no picture then
+    }
+  }
+  return { ...none, loggedIn: true, ...parseUser(user), avatar };
 }
 
 /** One repository in the shape the UI uses. */
@@ -30,8 +101,10 @@ function normalizeRepo(r) {
 
 /** The repositories of `owner` via `gh` (private ones too), or null when gh can't. */
 async function viaGh(owner) {
+  const gh = findGh();
+  if (!gh) return null;
   try {
-    const out = await run("gh", [
+    const out = await run(gh, [
       "repo",
       "list",
       ...(owner ? [owner] : []),
@@ -85,4 +158,4 @@ function clone(cloneUrl, parent, name) {
   });
 }
 
-module.exports = { listRepos, clone, normalizeRepo };
+module.exports = { listRepos, clone, normalizeRepo, account, parseUser, findGh };

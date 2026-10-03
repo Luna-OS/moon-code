@@ -15,6 +15,9 @@ Show the model and context use,ai,must,partial,yes,
 Show the plan's 5-hour and weekly limits,ai,must,no,yes,new: moon-phase gauges
 Projects from the Claude account appear after sign-in,ai,must,no,yes,new: Claude Code projects + GitHub repositories
 Continue an earlier Claude conversation,ai,should,partial,yes,
+Sign in with GitHub,accounts,must,yes,yes,through the GitHub CLI
+Cloud coding agent on a GitHub repository,ai,should,yes,yes,Claude Code on the web (claude --cloud)
+Animated mascot that shows what the AI is doing,ai,could,no,yes,new: Axo the pixel axolotl
 Night and day theme,theme,must,yes,yes,the Luna-OS Moon palette
 Minimap and word wrap settings,editor,should,yes,yes,
 IntelliSense with project-wide type checking,editor,should,yes,partial,syntax checks only; no language servers yet

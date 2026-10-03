@@ -1058,3 +1058,108 @@ body {
 .xterm .xterm-viewport {
   background-color: transparent !important;
 }
+
+/* ---- Axo, the pixel axolotl (src/mascot/Axolotl.tsx) ---- */
+
+.mc-axo {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+}
+.mc-axo svg {
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--color-lavender-400) 35%, transparent));
+}
+.mc-axo[data-mood="idle"] svg {
+  animation: mc-axo-float 3.4s ease-in-out infinite;
+}
+.mc-axo[data-mood="work"] svg {
+  animation: mc-axo-bob 0.56s steps(2, jump-none) infinite;
+  filter: drop-shadow(0 4px 12px color-mix(in srgb, var(--color-mint-400) 45%, transparent));
+}
+.mc-axo[data-mood="done"] svg {
+  animation: mc-axo-hop 0.45s ease-out 3;
+}
+.mc-axo[data-mood="sleep"] svg {
+  opacity: 0.85;
+  animation: mc-axo-float 5s ease-in-out infinite;
+}
+.mc-axo-z {
+  position: absolute;
+  top: -2px;
+  right: -6px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-sky-300);
+}
+.mc-axo-z span {
+  position: absolute;
+  right: 0;
+  font-size: 9px;
+  opacity: 0;
+  animation: mc-axo-z 3s linear infinite;
+}
+.mc-axo-z span:nth-child(2) {
+  animation-delay: 1s;
+}
+.mc-axo-z span:nth-child(3) {
+  animation-delay: 2s;
+  font-size: 11px;
+}
+
+@keyframes mc-axo-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+@keyframes mc-axo-bob {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-1px);
+  }
+}
+@keyframes mc-axo-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-6px);
+  }
+}
+@keyframes mc-axo-z {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(8px, -18px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-axo svg,
+  .mc-axo-z span {
+    animation: none !important;
+  }
+  .mc-axo-z span:nth-child(3) {
+    opacity: 1;
+  }
+}
+
+/* The composer shows its focus on the whole box (:focus-within), not on the text field inside. */
+.mc-composer textarea:focus-visible {
+  outline: none;
+}

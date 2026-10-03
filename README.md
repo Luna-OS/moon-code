@@ -22,14 +22,27 @@ component from Microsoft – and your own Claude Code.
   full the conversation is and how much of your 5-hour and weekly limits is used** – as two moons
   that fill up. Pick the model, the permissions and the effort; allow a blocked command with one
   click. See [docs/claude.md](docs/claude.md).
+- **Codes in the cloud**: the **Cloud** view hands a task to Claude Code on the web (`claude
+  --cloud`), which works on the folder's GitHub repository in its own sandbox – your computer can
+  be off – and pushes a branch. Bring a cloud session back here (`--teleport`), attach to one,
+  start **Remote Control** to steer Claude from your phone, or run an **Ultrareview** of the branch.
+- **Signs in to GitHub** through the GitHub CLI (`gh auth login` in a terminal tab, offered to be
+  installed if it's missing): your avatar and account in Projects and Cloud, your private
+  repositories in Projects.
+- **Has Axo**: a white pixel axolotl in the Claude panel. It sleeps until you sign in, blinks while
+  it waits, types on its moon laptop – with mint code sparks – while Claude works (and says what
+  Claude is doing), and cheers when Claude is done. It types in the status bar too.
+
+  ![Axo: waiting, blinking, asleep, coding, coding, done](docs/screenshots/axo.png)
+
 - **Knows your projects**: as soon as you are signed in, **Projects** lists every folder you have
   worked on with Claude Code, with its conversations (pick one to continue it), and your GitHub
   repositories, which clone and open with a click.
 - **Night and day** themes (or follow Windows). See [docs/theme.md](docs/theme.md).
 
-| Projects and the terminal | Continuing a conversation | Day theme |
-| --- | --- | --- |
-| ![Projects](docs/screenshots/projects.png) | ![Resume](docs/screenshots/resume.png) | ![Day](docs/screenshots/day.png) |
+| Cloud | Projects and the terminal | Continuing a conversation | Day theme |
+| --- | --- | --- | --- |
+| ![Cloud](docs/screenshots/cloud.png) | ![Projects](docs/screenshots/projects.png) | ![Resume](docs/screenshots/resume.png) | ![Day](docs/screenshots/day.png) |
 
 ## Run it
 
@@ -68,9 +81,11 @@ How the pieces fit together:
 - `electron/terminal.cjs` – terminals (node-pty).
 - `electron/claude/` – finding and running Claude Code: `cli.cjs` (command lines), `chat.cjs` (one
   process per conversation), `events.cjs` (its stream-json output → UI events), `account.cjs`,
-  `projects.cjs`; `electron/github.cjs` lists and clones repositories.
+  `projects.cjs`; `electron/github.cjs` is the GitHub account (through `gh`), its repositories
+  and cloning; `electron/programs.cjs` finds `claude` and `gh`.
 - `src/` – the React UI: `App.tsx` (the workbench), `src/workbench/*` (the views, the editor, the
-  Claude panel), `src/theme/*` (the Moon tokens, icons, editor theme), `src/lib/demo.ts` (an
+  Claude panel, the cloud), `src/mascot/*` (Axo; its frames come from
+  `scripts/axolotl-frames.py`), `src/theme/*` (the Moon tokens, icons, editor theme), `src/lib/demo.ts` (an
   in-memory main process for the browser and the tests).
 
 ## Skills

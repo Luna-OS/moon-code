@@ -4,6 +4,7 @@ import {
   AccountIcon,
   BranchIcon,
   ClaudeIcon,
+  CloudIcon,
   FilesIcon,
   MoonIcon,
   ProjectsIcon,
@@ -13,6 +14,7 @@ import {
   TerminalIcon,
 } from "../theme/icons";
 import { MoonPhase } from "../theme/MoonPhase";
+import { Axolotl } from "../mascot/Axolotl";
 import { modelLabel } from "../lib/claude";
 import { percent, timeUntil, tokens } from "../lib/format";
 import type { RateLimit } from "../lib/types";
@@ -59,7 +61,7 @@ export function TitleBar({
   );
 }
 
-export type SideView = "explorer" | "search" | "projects";
+export type SideView = "explorer" | "search" | "projects" | "cloud";
 
 /** The column of view buttons on the far left (the activity bar, in Moon colours). */
 export function ActivityBar({
@@ -96,6 +98,7 @@ export function ActivityBar({
       {item("explorer", "Explorer", <FilesIcon />, "Ctrl+Shift+E")}
       {item("search", "Search", <SearchIcon />, "Ctrl+Shift+F")}
       {item("projects", "Projects", <ProjectsIcon />, "Ctrl+Shift+O")}
+      {item("cloud", "Cloud", <CloudIcon size={22} />, "Claude Code on the web")}
       <button
         type="button"
         className="mc-activity"
@@ -167,6 +170,7 @@ export function StatusBar({
   limits,
   context,
   signedIn,
+  busy,
   theme,
   panelOpen,
   onToggleTheme,
@@ -180,6 +184,8 @@ export function StatusBar({
   limits: RateLimit | null;
   context: { used: number; window: number | null } | null;
   signedIn: boolean | null;
+  /** Claude is working: Axo types in the status bar. */
+  busy: boolean;
   theme: "dark" | "light";
   panelOpen: boolean;
   onToggleTheme: () => void;
@@ -220,7 +226,7 @@ export function StatusBar({
           onClick={onClaude}
           title="Claude: model, context and your plan's limits"
         >
-          <ClaudeIcon size={13} />
+          {busy ? <Axolotl mood="work" size={22} /> : <ClaudeIcon size={13} />}
           {signedIn === false ? (
             "Sign in to Claude"
           ) : (
