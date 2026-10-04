@@ -1,8 +1,7 @@
 "use strict";
 // Claude Code on the web inside Moon Code: the claude.ai/code page runs in a <webview> of the
 // workbench (its own persistent session, so the claude.ai sign-in stays), the session links that
-// `claude --cloud` prints in a terminal are picked up, and follow-ups go to a cloud session with
-// `claude -p "<message>" --cloud <session> --output-format json`.
+// `claude --cloud` prints in a terminal are picked up and open there too.
 
 /** The webview's session: claude.ai's cookies live here, apart from the workbench. */
 const CLOUD_PARTITION = "persist:claude-web";
@@ -112,49 +111,6 @@ function createSessionScanner(onFound) {
   };
 }
 
-/** `claude` arguments that queue `message` into the cloud session `ref`. */
-function followUpArgs(ref, message) {
-  return ["-p", String(message), "--cloud", ref, "--output-format", "json"];
-}
-
-/**
- * The answer of a follow-up: `{ ok, sessionId, url }`, or an Error with the CLI's message
- * (JSON `{ ok: false, error }`, or a line on stderr starting with "Error: ").
- */
-function parseFollowUp({ code, stdout, stderr }) {
-  const lines = String(stdout || "")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  for (const line of lines.reverse()) {
-    let json;
-    try {
-      json = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (json && json.ok === true) {
-      return {
-        ok: true,
-        sessionId: json.session_id || null,
-        url: json.url || (json.session_id ? sessionUrl(json.session_id) : null),
-      };
-    }
-    if (json && json.ok === false)
-      throw new Error(String(json.error || "The message wasn't sent."));
-  }
-  const err = String(stderr || "")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .find((l) => l.startsWith("Error:"));
-  throw new Error(
-    err
-      ? err.replace(/^Error:\s*/, "")
-      : `Claude Code ended without an answer${code != null ? ` (code ${code})` : ""}.`,
-  );
-}
-
 module.exports = {
   CLOUD_PARTITION,
   isClaudeWeb,
@@ -163,6 +119,4 @@ module.exports = {
   sessionRef,
   sessionUrl,
   createSessionScanner,
-  followUpArgs,
-  parseFollowUp,
 };

@@ -4,6 +4,7 @@ import { percent, timeAgo, timeUntil, tokens } from "./format";
 import { kindColor, languageOf } from "./languages";
 import { basename, dirname, join, relative, resolveIn, tildify } from "./paths";
 import { fuzzyScore } from "./fuzzy";
+import { moonPage, pageScript } from "../workbench/cloud-page";
 import { money, paceWarning, resetText, runsOutAt, SESSION_MS, WEEK_MS } from "./usage";
 
 describe("model names", () => {
@@ -219,5 +220,74 @@ describe("usage", () => {
     expect(resetText(now + 4 * 24 * H, now)).toBe("Resets Friday, 08:00");
     expect(money(4000, "EUR")).toBe("€40.00");
     expect(money(1234, "USD")).toBe("US$12.34");
+  });
+});
+
+describe("the cloud tab's Moon colours", () => {
+  const page = moonPage({ test: true }) as unknown as {
+    parseColor: (
+      v: string,
+    ) => { r: number; g: number; b: number; a: number; format: string } | null;
+    moonify: (
+      c: { r: number; g: number; b: number; a: number },
+      theme: "dark" | "light",
+    ) => { r: number; g: number; b: number; a: number };
+    formatColor: (c: { r: number; g: number; b: number; a: number }, format: string) => string;
+  };
+  const hueOf = (c: { r: number; g: number; b: number }) => {
+    const max = Math.max(c.r, c.g, c.b);
+    const min = Math.min(c.r, c.g, c.b);
+    if (max === min) return 0;
+    const d = max - min;
+    const h =
+      max === c.r
+        ? (c.g - c.b) / d + (c.g < c.b ? 6 : 0)
+        : max === c.g
+          ? (c.b - c.r) / d + 2
+          : (c.r - c.g) / d + 4;
+    return h * 60;
+  };
+
+  it("reads colours in every way a stylesheet writes them", () => {
+    expect(page.parseColor("#262624")).toMatchObject({ r: 38, g: 38, b: 36, format: "hex" });
+    expect(page.parseColor("#fff")).toMatchObject({ r: 255, g: 255, b: 255, format: "hex" });
+    expect(page.parseColor("rgba(217, 119, 87, 0.5)")).toMatchObject({ a: 0.5, format: "rgb" });
+    expect(page.parseColor("rgb(31 30 29 / 40%)")).toMatchObject({ r: 31, a: 0.4, format: "rgb" });
+    expect(page.parseColor("hsl(15 63% 60%)")?.format).toBe("hsl");
+    expect(page.parseColor("60 2.7% 14.5%")?.format).toBe("hsl-triplet");
+    expect(page.parseColor("31 31 30")?.format).toBe("rgb-triplet");
+    expect(page.parseColor("12px")).toBeNull();
+    expect(page.parseColor("var(--x)")).toBeNull();
+    expect(page.parseColor("1 2")).toBeNull();
+  });
+
+  it("turns greys into night blue and Claude's orange into lavender", () => {
+    const bg = page.moonify({ r: 38, g: 38, b: 36, a: 1 }, "dark");
+    expect(hueOf(bg)).toBeGreaterThan(240);
+    expect(hueOf(bg)).toBeLessThan(255);
+    expect(bg.b).toBeGreaterThan(bg.r);
+    const accent = page.moonify({ r: 217, g: 119, b: 87, a: 1 }, "dark");
+    expect(hueOf(accent)).toBeGreaterThan(240);
+    expect(hueOf(accent)).toBeLessThan(255);
+    // Text stays readable: light stays light.
+    const text = page.moonify({ r: 250, g: 249, b: 245, a: 1 }, "dark");
+    expect(Math.min(text.r, text.g, text.b)).toBeGreaterThan(220);
+    // Other colours (a green "success") are left alone.
+    expect(page.moonify({ r: 60, g: 180, b: 90, a: 1 }, "dark")).toMatchObject({ g: 180 });
+  });
+
+  it("writes the colour back in the format it came in", () => {
+    const c = { r: 16, g: 13, b: 40, a: 1 };
+    expect(page.formatColor(c, "hex")).toBe("#100d28");
+    expect(page.formatColor(c, "rgb-triplet")).toBe("16 13 40");
+    expect(page.formatColor(c, "hsl-triplet")).toMatch(/^24\d(\.\d)? 5\d(\.\d)?% 10(\.\d)?%$/);
+    expect(page.formatColor({ ...c, a: 0.5 }, "rgb")).toBe("rgba(16, 13, 40, 0.5)");
+  });
+
+  it("is one self-contained script for the page", () => {
+    const script = pageScript({ theme: "dark" });
+    expect(script.startsWith("(")).toBe(true);
+    expect(script).toContain('"theme":"dark"');
+    expect(script).toContain('"test":false');
   });
 });

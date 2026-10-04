@@ -62,7 +62,7 @@ export function TitleBar({
   );
 }
 
-export type SideView = "explorer" | "search" | "projects" | "cloud" | "skills";
+export type SideView = "explorer" | "search" | "projects" | "skills";
 
 /** The column of view buttons on the far left (the activity bar, in Moon colours). */
 export function ActivityBar({
@@ -73,6 +73,8 @@ export function ActivityBar({
   onClaude,
   onAccount,
   accountOpen = false,
+  cloudOpen = false,
+  onCloud,
   onSettings,
   updateReady = false,
 }: {
@@ -84,6 +86,10 @@ export function ActivityBar({
   onAccount: () => void;
   /** The account menu is open. */
   accountOpen?: boolean;
+  /** The cloud tab is in front. */
+  cloudOpen?: boolean;
+  /** Opens (or brings forward) the cloud tab. */
+  onCloud: () => void;
   onSettings: () => void;
   /** A new Moon Code is out: a dot on the settings button. */
   updateReady?: boolean;
@@ -105,7 +111,16 @@ export function ActivityBar({
       {item("explorer", "Explorer", <FilesIcon />, "Ctrl+Shift+E")}
       {item("search", "Search", <SearchIcon />, "Ctrl+Shift+F")}
       {item("projects", "Projects", <ProjectsIcon />, "Ctrl+Shift+O")}
-      {item("cloud", "Cloud", <CloudIcon size={22} />, "Claude Code on the web")}
+      <button
+        type="button"
+        className="mc-activity"
+        aria-pressed={cloudOpen}
+        aria-label="Cloud"
+        title="Claude Code on the web, in a tab"
+        onClick={onCloud}
+      >
+        <CloudIcon size={22} />
+      </button>
       {item("skills", "Skills", <SkillsIcon />, "what Claude can do on top")}
       <button
         type="button"

@@ -1,7 +1,7 @@
 {
   "name": "moon-code",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Moon Code – a code editor under the night sky, with Claude Code built in.",
   "license": "MIT",
   "type": "module",

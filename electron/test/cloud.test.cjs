@@ -7,8 +7,6 @@ const {
   cleanUserAgent,
   sessionRef,
   createSessionScanner,
-  followUpArgs,
-  parseFollowUp,
 } = require("../cloud.cjs");
 
 const ID = "session_01Jt1DbydCdQW8P3YacS1hBz";
@@ -77,41 +75,4 @@ test("the scanner reads OSC 8 links and keeps terminals apart", () => {
   s.forget("t3");
   s.push("t3", `again https://claude.ai/code/${ID}\n`);
   assert.equal(found.length, 3);
-});
-
-test("a follow-up runs claude -p --cloud with JSON output", () => {
-  assert.deepEqual(followUpArgs(ID, "Also add tests"), [
-    "-p",
-    "Also add tests",
-    "--cloud",
-    ID,
-    "--output-format",
-    "json",
-  ]);
-});
-
-test("the follow-up's answer: sent, refused, or an error on stderr", () => {
-  assert.deepEqual(
-    parseFollowUp({
-      code: 0,
-      stdout: `{"ok":true,"session_id":"${ID}","url":"https://claude.ai/code/${ID}?m=0"}\n`,
-      stderr: "",
-    }),
-    { ok: true, sessionId: ID, url: `https://claude.ai/code/${ID}?m=0` },
-  );
-  assert.throws(
-    () =>
-      parseFollowUp({
-        code: 1,
-        stdout: `{"ok":false,"session_id":"${ID}","error":"cloud session ${ID} is archived and cannot accept new messages"}`,
-        stderr: "",
-      }),
-    /is archived/,
-  );
-  assert.throws(
-    () =>
-      parseFollowUp({ code: 1, stdout: "", stderr: "Error: Session not found: session_nope12\n" }),
-    /^Error: Session not found: session_nope12$/,
-  );
-  assert.throws(() => parseFollowUp({ code: 2, stdout: "", stderr: "" }), /code 2/);
 });
