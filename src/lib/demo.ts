@@ -61,6 +61,8 @@ const DEFAULT_SETTINGS: Settings = {
       task: "Add a progress bar to the extract dialog",
       repo: "Luna-OS/Moon-Zip",
       at: now() - 3 * HOUR,
+      sessionId: "session_01MoonZipProgressBar",
+      url: "https://claude.ai/code/session_01MoonZipProgressBar",
     },
   ],
   mascot: true,
@@ -267,6 +269,12 @@ export class DemoBridge implements MoonCodeBridge {
         this.emit("terminal:data", { id, data: "Opening the browser to sign in…\r\n" });
         this.loggedIn = true;
       }
+      // What electron/cloud.cjs reports when `claude --cloud` prints its session's link.
+      if (Array.isArray(opts.command) && opts.command[1] === "--cloud") {
+        const url = "https://claude.ai/code/session_01DemoCloudTask";
+        this.emit("terminal:data", { id, data: `Cloud session\r\nOpen in browser: ${url}\r\n` });
+        this.emit("cloud:session", { terminalId: id, id: "session_01DemoCloudTask", url });
+      }
     }, 20);
     return Promise.resolve();
   }
@@ -398,6 +406,17 @@ export class DemoBridge implements MoonCodeBridge {
         : { ...base, loggedIn: false, login: null, name: null, url: null, avatar: null },
     );
   }
+  cloudSend(ref: string, message: string) {
+    this.sent.push({ ref, message });
+    return Promise.resolve({
+      ok: true as const,
+      sessionId: ref,
+      url: `https://claude.ai/code/${ref}`,
+    });
+  }
+  /** Follow-ups sent to cloud sessions in this demo (for the tests). */
+  sent: { ref: string; message: string }[] = [];
+
   githubRepos() {
     return Promise.resolve({ source: "api" as const, repos: REPOS });
   }

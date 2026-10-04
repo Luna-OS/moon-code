@@ -195,6 +195,89 @@ describe("Moon Code", () => {
     expect(bridge.cloned).toEqual(["Moon-Explorer"]);
   });
 
+  it("opens the new cloud session in Moon Code's cloud tab, not elsewhere", async () => {
+    const bridge = new DemoBridge();
+    const external = vi.spyOn(bridge, "openExternal");
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await user.click(await screen.findByRole("button", { name: "Cloud" }));
+    await user.type(await screen.findByLabelText("Cloud task"), "Add a changelog");
+    await user.click(screen.getByRole("button", { name: /Start in the cloud/ }));
+    const tab = await screen.findByRole("tab", { name: /Cloud/ });
+    expect(tab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Address")).toHaveTextContent(
+      "claude.ai/code/session_01DemoCloudTask",
+    );
+    expect(external).not.toHaveBeenCalled();
+    // The task remembers its session, so it can be messaged and brought here later.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("group", { name: "Session session_01DemoCloudTask" }),
+      ).toBeInTheDocument(),
+    );
+    const saved = await bridge.getSettings();
+    expect(saved.cloudTasks[0]).toMatchObject({
+      task: "Add a changelog",
+      sessionId: "session_01DemoCloudTask",
+    });
+    // Closing the tab brings the editor back.
+    await user.click(screen.getByRole("button", { name: "Close Cloud" }));
+    expect(screen.queryByRole("tab", { name: /Cloud/ })).not.toBeInTheDocument();
+  });
+
+  it("messages a cloud session and brings it here", async () => {
+    const bridge = new DemoBridge();
+    const start = vi.spyOn(bridge, "terminalStart");
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await user.click(await screen.findByRole("button", { name: "Cloud" }));
+    const session = await screen.findByRole("group", {
+      name: "Session session_01MoonZipProgressBar",
+    });
+    await user.click(within(session).getByRole("button", { name: /Message/ }));
+    await user.type(
+      screen.getByLabelText("Message for the cloud session"),
+      "Also show the percentage",
+    );
+    await user.click(screen.getByRole("button", { name: "Send to the cloud session" }));
+    expect(await screen.findByText(/Sent – Claude picks it up/)).toBeInTheDocument();
+    expect(bridge.sent).toEqual([
+      { ref: "session_01MoonZipProgressBar", message: "Also show the percentage" },
+    ]);
+
+    await user.click(within(session).getByRole("button", { name: /Bring here/ }));
+    await waitFor(() => {
+      const call = start.mock.calls.find(
+        ([, o]) => Array.isArray(o.command) && o.command.includes("--teleport"),
+      );
+      expect(call?.[1].command).toEqual([
+        "/home/luna/.local/bin/claude",
+        "--teleport",
+        "session_01MoonZipProgressBar",
+      ]);
+    });
+  });
+
+  it("opens a pasted session link in the cloud tab", async () => {
+    const user = userEvent.setup();
+    render(<App bridge={new DemoBridge()} />);
+    await user.click(await screen.findByRole("button", { name: "Cloud" }));
+    const field = await screen.findByLabelText("Cloud session link or ID");
+    await user.type(field, "nonsense");
+    expect(screen.getByText(/isn't a session link/)).toBeInTheDocument();
+    await user.clear(field);
+    await user.type(field, "claude.ai/code/session_01PastedLink?x=1");
+    await user.click(
+      within(screen.getByRole("group", { name: "Session session_01PastedLink" })).getByRole(
+        "button",
+        { name: /Open here/ },
+      ),
+    );
+    expect(await screen.findByLabelText("Address")).toHaveTextContent(
+      "claude.ai/code/session_01PastedLink",
+    );
+  });
+
   it("finds, downloads and installs an update from Settings", async () => {
     const bridge = new DemoBridge();
     const install = vi.spyOn(bridge, "updateInstall");

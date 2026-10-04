@@ -2,7 +2,7 @@
 // Moon Code – Electron main process: the window, the open folder's files, the terminals and the
 // bridge to the user's Claude Code CLI (chat, account, projects, limits).
 
-const { app, BrowserWindow, ipcMain, shell, dialog, Menu, net } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu, net, session } = require("electron");
 const os = require("os");
 const path = require("path");
 const workspace = require("./workspace.cjs");
@@ -15,6 +15,7 @@ const { listProjects, listSessions } = require("./claude/projects.cjs");
 const { ChatManager } = require("./claude/chat.cjs");
 const { createLineParser } = require("./claude/events.cjs");
 const { createUpdater } = require("./updater.cjs");
+const cloud = require("./cloud.cjs");
 
 const ROOT = path.join(__dirname, "..");
 const BUILD = path.join(ROOT, "build");
@@ -34,7 +35,15 @@ let mainWindow = null;
 const send = (channel, payload) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
 };
-const terminals = new Terminals(send);
+// Session links that `claude --cloud` prints in a terminal open in Moon Code's cloud tab.
+const sessionScanner = cloud.createSessionScanner((terminalId, found) =>
+  send("cloud:session", { terminalId, ...found }),
+);
+const terminals = new Terminals((channel, payload) => {
+  send(channel, payload);
+  if (channel === "terminal:data") sessionScanner.push(payload.id, payload.data);
+  else if (channel === "terminal:exit") sessionScanner.forget(payload.id);
+});
 const chats = new ChatManager((chatId, event) => {
   if (event.kind === "rate-limit") settings.set({ lastRateLimit: { ...event, at: Date.now() } });
   send("claude:event", { chatId, event });
@@ -71,13 +80,18 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
       spellcheck: false,
+      // The cloud tab: claude.ai/code in a <webview> (see guardWebviews).
+      webviewTag: true,
     },
   });
+  guardWebviews(mainWindow);
   if (process.env.MOON_DEV_URL) mainWindow.loadURL(process.env.MOON_DEV_URL);
   else mainWindow.loadFile(path.join(ROOT, "dist", "index.html"));
-  // Links open in the browser, never inside the app.
+  // Links open in the browser, never inside the app – except cloud sessions, which open in the
+  // cloud tab.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    if (cloud.sessionRef(url) || url === CLAUDE_CODE_WEB) send("cloud:open", { url });
+    else if (/^https?:\/\//.test(url)) shell.openExternal(url);
     return { action: "deny" };
   });
   mainWindow.webContents.on("will-navigate", (e) => e.preventDefault());
@@ -86,6 +100,55 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// ---------------------------------------------------------------- the cloud tab
+
+const CLAUDE_CODE_WEB = "https://claude.ai/code";
+
+/**
+ * The cloud tab's <webview> only ever shows claude.ai, in its own session, without Node or a
+ * preload; the windows it opens are sign-ins (a small window of Moon Code) or links for the
+ * browser.
+ */
+function guardWebviews(win) {
+  const cloudSession = session.fromPartition(cloud.CLOUD_PARTITION);
+  cloudSession.setUserAgent(cloud.cleanUserAgent(cloudSession.getUserAgent()));
+  win.webContents.on("will-attach-webview", (e, prefs, params) => {
+    delete prefs.preload;
+    prefs.nodeIntegration = false;
+    prefs.contextIsolation = true;
+    prefs.sandbox = true;
+    if (params.partition !== cloud.CLOUD_PARTITION || !cloud.isClaudeWeb(params.src)) {
+      e.preventDefault();
+    }
+  });
+}
+
+app.on("web-contents-created", (_e, contents) => {
+  if (contents.session !== session.fromPartition(cloud.CLOUD_PARTITION)) return;
+  contents.setWindowOpenHandler(({ url }) => {
+    const where = cloud.popupTarget(url);
+    if (where === "external") shell.openExternal(url);
+    if (where !== "app") return { action: "deny" };
+    return {
+      action: "allow",
+      overrideBrowserWindowOptions: {
+        width: 520,
+        height: 720,
+        autoHideMenuBar: true,
+        title: "Moon Code",
+        backgroundColor: FRAME.dark.color,
+        icon: path.join(BUILD, "icon.png"),
+        webPreferences: {
+          partition: cloud.CLOUD_PARTITION,
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+        },
+      },
+    };
+  });
+});
 
 // ---------------------------------------------------------------- IPC
 
@@ -205,6 +268,23 @@ handle("claude:checkLimits", async () => {
   parser.end();
   if (found) settings.set({ lastRateLimit: { ...found, at: Date.now() } });
   return found;
+});
+
+// Cloud sessions
+/** Queues `message` into a cloud session (an ID or a claude.ai/code link). */
+handle("cloud:send", async (_e, ref, message) => {
+  const id = cloud.sessionRef(ref);
+  if (!id) throw new Error("That isn't a cloud session's link or ID.");
+  if (!String(message || "").trim()) throw new Error("The message is empty.");
+  const exe = claudeExe();
+  if (!exe) {
+    const err = new Error("Claude Code isn't installed.");
+    err.code = "ENOCLAUDE";
+    throw err;
+  }
+  return cloud.parseFollowUp(
+    await runClaude(exe, cloud.followUpArgs(id, message), { timeoutMs: 120_000 }),
+  );
 });
 
 // Projects on GitHub

@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import type { MoonCodeBridge } from "../lib/types";
 
@@ -62,6 +63,7 @@ export default function TerminalView({
   command,
   theme,
   visible,
+  onLink,
 }: {
   bridge: MoonCodeBridge;
   id: string;
@@ -69,10 +71,16 @@ export default function TerminalView({
   command?: string[] | string;
   theme: "dark" | "light";
   visible: boolean;
+  /** A link clicked in the terminal (cloud sessions open in Moon Code, the rest in the browser). */
+  onLink: (url: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const term = useRef<Terminal | null>(null);
   const fit = useRef<FitAddon | null>(null);
+  const link = useRef(onLink);
+  useLayoutEffect(() => {
+    link.current = onLink;
+  });
 
   useEffect(() => {
     if (!host.current) return;
@@ -84,9 +92,12 @@ export default function TerminalView({
       lineHeight: 1.25,
       theme: THEMES[theme],
       scrollback: 5000,
+      // Links a program marks itself (OSC 8).
+      linkHandler: { activate: (_e, uri) => link.current(uri), allowNonHttpProtocols: false },
     });
     const f = new FitAddon();
     t.loadAddon(f);
+    t.loadAddon(new WebLinksAddon((_e, uri) => link.current(uri)));
     t.open(host.current);
     term.current = t;
     fit.current = f;

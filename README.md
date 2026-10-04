@@ -25,8 +25,10 @@ component from Microsoft – and your own Claude Code.
 - **Codes in the cloud**: the **Cloud** view lists your GitHub repositories and hands a task for
   any of them to Claude Code on the web (`claude --cloud`; one that isn't on this computer is
   cloned first), which works on it in its own sandbox – your computer can
-  be off – and pushes a branch. Bring a cloud session back here (`--teleport`), attach to one,
-  start **Remote Control** to steer Claude from your phone, or run an **Ultrareview** of the branch.
+  be off – and pushes a branch. The session opens right in Moon Code, in the **Cloud tab**
+  (claude.ai/code next to your files) – not in a browser or the Claude app. Send it follow-ups,
+  bring it back here (`--teleport`), start **Remote Control** to steer Claude from your phone, or
+  run an **Ultrareview** of the branch.
 - **Signs in to GitHub** through the GitHub CLI (`gh auth login` in a terminal tab, offered to be
   installed if it's missing): your avatar and account in Projects and Cloud, your private
   repositories in Projects.
