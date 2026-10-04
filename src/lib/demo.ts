@@ -1,4 +1,5 @@
 import type {
+  Attachment,
   BridgeEvents,
   ChatStartOptions,
   ClaudeAccount,
@@ -16,6 +17,7 @@ import type {
   SysInfo,
   UpdateStatus,
   PlanUsage,
+  PullRequest,
   Skill,
 } from "./types";
 
@@ -337,7 +339,10 @@ export class DemoBridge implements MoonCodeBridge {
     this.chats.set(chatId, { model: opts.model ?? null, sessionId });
     return Promise.resolve({ sessionId });
   }
-  claudeSend(chatId: string, text: string) {
+  /** The files sent with the last message (for the tests). */
+  lastFiles: Attachment[] = [];
+  claudeSend(chatId: string, text: string, files?: Attachment[]) {
+    this.lastFiles = files ?? [];
     const chat = this.chats.get(chatId);
     if (!chat) return Promise.resolve(false);
     const send = (event: ClaudeEvent, delay: number) =>
@@ -514,6 +519,27 @@ export class DemoBridge implements MoonCodeBridge {
   githubClone(_url: string, name: string) {
     this.cloned.push(name);
     return Promise.resolve(join("/home/luna/Moon Code Projects", name));
+  }
+  pulls: PullRequest[] = [
+    {
+      number: 12,
+      title: "Add a progress bar to the extract dialog",
+      branch: "claude/progress-bar-k2Pq",
+      url: "https://github.com/Luna-OS/Moon-Zip/pull/12",
+      draft: true,
+      mergeable: true,
+      checks: "passing",
+      updated: now() - 2 * HOUR,
+    },
+  ];
+  merged: number[] = [];
+  githubPulls(repo: string) {
+    return Promise.resolve(repo === "Luna-OS/Moon-Zip" ? this.pulls : []);
+  }
+  githubMerge(_repo: string, number: number) {
+    this.merged.push(number);
+    this.pulls = this.pulls.filter((p) => p.number !== number);
+    return Promise.resolve();
   }
   /** Repositories cloned in this demo (for the tests). */
   cloned: string[] = [];

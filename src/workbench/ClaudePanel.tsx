@@ -3,6 +3,7 @@ import {
   AlertIcon,
   CheckIcon,
   ClaudeIcon,
+  AttachIcon,
   CloseIcon,
   HistoryIcon,
   LogoutIcon,
@@ -32,6 +33,7 @@ import {
 import { dollars, percent, timeAgo, timeUntil, tokens } from "../lib/format";
 import { basename, relative } from "../lib/paths";
 import type {
+  Attachment,
   ClaudeAccount,
   ClaudeSession,
   Effort,
@@ -55,6 +57,31 @@ export interface ResumeRequest {
   /** Changes on every request, so the same session can be resumed twice. */
   nonce: number;
 }
+
+/** The largest file the panel takes (as electron/claude/attachments.cjs). */
+const MAX_ATTACHMENT = 25 * 1024 * 1024;
+
+/** A File as base64. */
+function readBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () =>
+      resolve((typeof r.result === "string" ? r.result : "").replace(/^data:[^,]*,/, ""));
+    r.onerror = () => reject(r.error ?? new Error("The file couldn't be read."));
+    r.readAsDataURL(file);
+  });
+}
+
+/** "PDF", "TS", … for a file without a preview. */
+const extOf = (name: string) => (/\.([a-z0-9]{1,5})$/i.exec(name)?.[1] ?? "file").toUpperCase();
+
+/** 1536 → "1.5 KB" */
+const size = (n: number) =>
+  n < 1024
+    ? `${n} B`
+    : n < 1024 * 1024
+      ? `${(n / 1024).toFixed(1)} KB`
+      : `${(n / 1024 / 1024).toFixed(1)} MB`;
 
 const newChatId = () => `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -316,15 +343,56 @@ export function ClaudePanel({
     running.current = key;
   };
 
+  /** Files and pictures waiting to go with the next message. */
+  const [files, setFiles] = useState<(Attachment & { preview: string | null })[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  const addFiles = async (list: FileList | File[]) => {
+    const added: (Attachment & { preview: string | null })[] = [];
+    for (const f of Array.from(list)) {
+      if (f.size > MAX_ATTACHMENT) {
+        dispatch({
+          type: "notice",
+          tone: "warning",
+          text: `${f.name} is larger than ${MAX_ATTACHMENT / 1024 / 1024} MB, so it wasn't added.`,
+        });
+        continue;
+      }
+      const data = await readBase64(f);
+      const mime = f.type || "application/octet-stream";
+      added.push({
+        name: f.name || `pasted-${Date.now()}.png`,
+        mime,
+        size: f.size,
+        data,
+        preview: mime.startsWith("image/") ? `data:${mime};base64,${data}` : null,
+      });
+    }
+    if (added.length) setFiles((cur) => [...cur, ...added]);
+    input.current?.focus();
+  };
+
   const send = async (text: string, tools = allowed) => {
-    const t = text.trim();
+    const sending = files;
+    const t = text.trim() || (sending.length ? "Have a look at the attached files." : "");
     if (!t || chat.busy) return;
     setFresh(null);
-    dispatch({ type: "user", text: t });
+    dispatch({
+      type: "user",
+      text: text.trim(),
+      files: sending.length
+        ? sending.map((f) => ({ name: f.name, preview: f.preview }))
+        : undefined,
+    });
     setDraft("");
+    setFiles([]);
     try {
       await ensureRunning(tools);
-      const ok = await bridge.claudeSend(chatId, t);
+      const ok = await bridge.claudeSend(
+        chatId,
+        t,
+        sending.length ? sending.map(({ preview: _p, ...f }) => f) : undefined,
+      );
       if (!ok) throw new Error("Claude Code isn't running. Try again.");
     } catch (e) {
       running.current = null;
@@ -470,7 +538,62 @@ export function ClaudePanel({
               </span>
             </div>
           )}
-          <div className="mc-composer px-3 pb-2 pt-2.5">
+          <div
+            className="mc-composer px-3 pb-2 pt-2.5"
+            data-dragging={dragging || undefined}
+            onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes("Files")) return;
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              if (!e.dataTransfer.files.length) return;
+              e.preventDefault();
+              setDragging(false);
+              void addFiles(e.dataTransfer.files);
+            }}
+          >
+            {files.length > 0 && (
+              <ul
+                className="m-0 mb-2 flex list-none flex-wrap gap-1.5 p-0"
+                aria-label="Attached files"
+              >
+                {files.map((f, i) => (
+                  <li
+                    key={`${f.name}-${i}`}
+                    className="mc-attachment"
+                    title={`${f.name} · ${size(f.size)}`}
+                  >
+                    {f.preview ? (
+                      <img src={f.preview} alt="" />
+                    ) : (
+                      <span className="mc-attachment-ext">{extOf(f.name)}</span>
+                    )}
+                    <span className="min-w-0 max-w-[110px] truncate">{f.name}</span>
+                    <button
+                      type="button"
+                      className="mc-tab-close border-0 bg-transparent p-0"
+                      aria-label={`Remove ${f.name}`}
+                      onClick={() => setFiles((cur) => cur.filter((_, j) => j !== i))}
+                    >
+                      <CloseIcon size={11} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              hidden
+              aria-label="Choose files for Claude"
+              onChange={(e) => {
+                if (e.target.files) void addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
             <textarea
               ref={input}
               rows={Math.min(8, Math.max(2, draft.split("\n").length))}
@@ -478,6 +601,13 @@ export function ClaudePanel({
               aria-label="Message to Claude"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onPaste={(e) => {
+                // A screenshot (or a copied file) goes in as an attachment.
+                const pasted = Array.from(e.clipboardData.files);
+                if (!pasted.length) return;
+                e.preventDefault();
+                void addFiles(pasted);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
@@ -486,6 +616,15 @@ export function ClaudePanel({
               }}
             />
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                className="mc-btn mc-btn-ghost mc-btn-sm mc-btn-icon"
+                aria-label="Add files or pictures"
+                title="Add files or pictures (or drop them here, or paste a screenshot)"
+                onClick={() => picker.current?.click()}
+              >
+                <AttachIcon size={14} />
+              </button>
               <Select
                 label="Model"
                 value={model ?? ""}
@@ -538,7 +677,7 @@ export function ClaudePanel({
                   className="mc-btn mc-btn-primary mc-btn-sm mc-btn-icon"
                   aria-label="Send"
                   title="Send (Enter)"
-                  disabled={!draft.trim()}
+                  disabled={!draft.trim() && files.length === 0}
                   onClick={() => void send(draft)}
                 >
                   <SendIcon size={14} />
@@ -803,7 +942,25 @@ function ChatRow({
 }) {
   switch (item.type) {
     case "user":
-      return <div className="mc-msg-user text-[0.8125rem]">{item.text}</div>;
+      return (
+        <div className="mc-msg-user text-[0.8125rem]">
+          {item.files && item.files.length > 0 && (
+            <div className="mb-1.5 flex flex-wrap gap-1.5">
+              {item.files.map((f, i) =>
+                f.preview ? (
+                  <img key={i} src={f.preview} alt={f.name} className="mc-msg-image" />
+                ) : (
+                  <span key={i} className="mc-attachment">
+                    <span className="mc-attachment-ext">{extOf(f.name)}</span>
+                    <span className="max-w-[160px] truncate">{f.name}</span>
+                  </span>
+                ),
+              )}
+            </div>
+          )}
+          {item.text}
+        </div>
+      );
     case "assistant":
       return (
         <div className="mc-msg-assistant text-[0.8125rem]">

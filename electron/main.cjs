@@ -3,6 +3,7 @@
 // bridge to the user's Claude Code CLI (chat, account, projects, limits).
 
 const { app, BrowserWindow, ipcMain, shell, dialog, Menu, net, session } = require("electron");
+const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const workspace = require("./workspace.cjs");
@@ -14,6 +15,7 @@ const { accountStatus } = require("./claude/account.cjs");
 const { listProjects, listSessions } = require("./claude/projects.cjs");
 const { USAGE_ARGS, parseUsage } = require("./claude/usage.cjs");
 const skills = require("./claude/skills.cjs");
+const attachments = require("./claude/attachments.cjs");
 const { ChatManager } = require("./claude/chat.cjs");
 const { createLineParser } = require("./claude/events.cjs");
 const { createUpdater } = require("./updater.cjs");
@@ -60,6 +62,8 @@ const updater = createUpdater({
 });
 
 const claudeExe = () => findClaude(settings.get().claudePath);
+/** Where the Claude panel's attachments are saved (electron/claude/attachments.cjs). */
+const ATTACHMENTS = path.join(app.getPath("userData"), "attachments");
 
 // ---------------------------------------------------------------- window
 
@@ -235,9 +239,19 @@ handle("claude:start", (_e, chatId, opts) => {
     err.code = "ENOCLAUDE";
     throw err;
   }
-  return chats.start(chatId, { ...opts, exe, cwd: opts.cwd || os.homedir() });
+  fs.mkdirSync(ATTACHMENTS, { recursive: true });
+  return chats.start(chatId, {
+    ...opts,
+    exe,
+    cwd: opts.cwd || os.homedir(),
+    attachmentsDir: ATTACHMENTS,
+  });
 });
-handle("claude:send", (_e, chatId, text) => chats.send(chatId, text));
+handle("claude:send", (_e, chatId, text, files) => {
+  const saved =
+    files && files.length ? attachments.saveAttachments(ATTACHMENTS, chatId, files) : [];
+  return chats.send(chatId, attachments.messageContent(text, saved));
+});
 handle("claude:stop", (_e, chatId) => chats.stop(chatId));
 /**
  * Asks Claude Code for the plan's limits with the smallest possible request (one word from Haiku,
@@ -317,7 +331,12 @@ handle("claude:usage", async () => {
 // Skills
 handle("skills:list", (_e, project) => skills.listSkills(project));
 handle("skills:create", (_e, opts) => skills.createSkill(opts));
-handle("skills:install", (_e, repo) => skills.installFromGitHub(repo));
+handle("skills:install", (_e, repo) =>
+  skills.installFromGitHub(repo, {
+    download: (owner, name) =>
+      github.downloadTarball(owner, name, (url, opts) => net.fetch(url, opts)),
+  }),
+);
 handle("skills:remove", (_e, dir, project) => shell.trashItem(skills.skillFolder(dir, project)));
 
 // Projects on GitHub
@@ -325,6 +344,8 @@ handle("github:account", () => github.account((url, opts) => net.fetch(url, opts
 handle("github:repos", () =>
   github.listRepos(settings.get().githubOwner, (url, opts) => net.fetch(url, opts)),
 );
+handle("github:pulls", (_e, repo) => github.claudePulls(repo));
+handle("github:merge", (_e, repo, number, draft) => github.mergePull(repo, number, draft));
 handle("github:clone", (_e, cloneUrl, name) =>
   github.clone(cloneUrl, settings.get().projectsFolder, name),
 );
@@ -340,6 +361,7 @@ handle("update:install", () => updater.install());
 Menu.setApplicationMenu(null);
 app.whenReady().then(() => {
   createWindow();
+  attachments.pruneAttachments(ATTACHMENTS);
   // A quiet look for a new version a little after the start (Settings → Updates can switch it off).
   if (settings.get().autoUpdateCheck !== false) setTimeout(() => void updater.check(), 8000);
 });

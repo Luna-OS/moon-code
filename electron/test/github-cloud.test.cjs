@@ -58,3 +58,33 @@ test("programs are found on the PATH, then in the installers' places", () => {
   );
   assert.equal(findProgram("nope", { env: { PATH: dir }, platform: "linux" }), null);
 });
+
+test("Claude's pull requests: checks, drafts and conflicts", () => {
+  const { normalizePull, checksOf } = require("../github.cjs");
+  assert.equal(checksOf([]), "none");
+  assert.equal(checksOf([{ conclusion: "SUCCESS" }, { state: "SUCCESS" }]), "passing");
+  assert.equal(checksOf([{ conclusion: "SUCCESS" }, { status: "IN_PROGRESS" }]), "pending");
+  assert.equal(checksOf([{ conclusion: "FAILURE" }, { status: "IN_PROGRESS" }]), "failing");
+  assert.deepEqual(
+    normalizePull({
+      number: 4,
+      title: "Cloud tab",
+      headRefName: "claude/cloud-tab",
+      url: "https://github.com/Luna-OS/moon-code/pull/4",
+      isDraft: true,
+      mergeable: "CONFLICTING",
+      statusCheckRollup: [{ conclusion: "SUCCESS" }],
+      updatedAt: "2026-10-04T03:45:00Z",
+    }),
+    {
+      number: 4,
+      title: "Cloud tab",
+      branch: "claude/cloud-tab",
+      url: "https://github.com/Luna-OS/moon-code/pull/4",
+      draft: true,
+      mergeable: false,
+      checks: "passing",
+      updated: Date.UTC(2026, 9, 4, 3, 45),
+    },
+  );
+});

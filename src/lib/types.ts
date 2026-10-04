@@ -175,6 +175,19 @@ export interface ClaudeSession {
   branch: string | null;
 }
 
+/** A pull request from a cloud session (its branch starts with "claude/"). */
+export interface PullRequest {
+  number: number;
+  title: string;
+  branch: string;
+  url: string;
+  draft: boolean;
+  /** null while GitHub is still working it out. */
+  mergeable: boolean | null;
+  checks: "passing" | "failing" | "pending" | "none";
+  updated: number;
+}
+
 export interface Repo {
   name: string;
   fullName: string;
@@ -184,6 +197,15 @@ export interface Repo {
   updated: number;
   private: boolean;
   language: string | null;
+}
+
+/** A file or picture added to a message (electron/claude/attachments.cjs). */
+export interface Attachment {
+  name: string;
+  mime: string;
+  size: number;
+  /** The file, base64. */
+  data: string;
 }
 
 export interface ChatStartOptions {
@@ -293,7 +315,8 @@ export interface MoonCodeBridge {
   claudeSessions(projectPath: string): Promise<ClaudeSession[]>;
   claudeLogout(): Promise<void>;
   claudeStart(chatId: string, opts: ChatStartOptions): Promise<{ sessionId: string | null }>;
-  claudeSend(chatId: string, text: string): Promise<boolean>;
+  /** Sends a message, with files and pictures when there are some. */
+  claudeSend(chatId: string, text: string, files?: Attachment[]): Promise<boolean>;
   claudeStop(chatId: string): Promise<void>;
   claudeCheckLimits(): Promise<RateLimit | null>;
   /** The plan's usage from `/usage` (no cost), or null when Claude Code has no plan numbers. */
@@ -319,6 +342,10 @@ export interface MoonCodeBridge {
   githubAccount(): Promise<GitHubAccount>;
   githubRepos(): Promise<{ source: "gh" | "api" | "none"; repos: Repo[] }>;
   githubClone(cloneUrl: string, name: string): Promise<string>;
+  /** The open pull requests Claude made in a repository ("owner/name"). */
+  githubPulls(repo: string): Promise<PullRequest[]>;
+  /** Merges a pull request (marks a draft ready first). */
+  githubMerge(repo: string, number: number, draft: boolean): Promise<void>;
 
   updateState(): Promise<UpdateStatus>;
   updateCheck(): Promise<UpdateStatus>;

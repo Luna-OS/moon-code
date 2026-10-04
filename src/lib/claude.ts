@@ -47,7 +47,13 @@ export function planLabel(plan: string | null): string | null {
 // ---------------------------------------------------------------- the conversation
 
 export type ChatItem =
-  | { type: "user"; id: string; text: string }
+  | {
+      type: "user";
+      id: string;
+      text: string;
+      /** Files and pictures sent with it (a preview for pictures). */
+      files?: { name: string; preview: string | null }[];
+    }
   | { type: "assistant"; id: string; text: string; done: boolean }
   | {
       type: "tool";
@@ -96,7 +102,7 @@ let seq = 0;
 const nextId = (p: string) => `${p}-${++seq}`;
 
 export type ChatAction =
-  | { type: "user"; text: string }
+  | { type: "user"; text: string; files?: { name: string; preview: string | null }[] }
   | { type: "event"; event: ClaudeEvent }
   | { type: "notice"; tone: "info" | "warning" | "error"; text: string }
   | { type: "stopped" }
@@ -129,7 +135,10 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         busy: true,
         ended: false,
-        items: [...state.items, { type: "user", id: nextId("u"), text: action.text }],
+        items: [
+          ...state.items,
+          { type: "user", id: nextId("u"), text: action.text, files: action.files },
+        ],
       };
     case "notice":
       return {

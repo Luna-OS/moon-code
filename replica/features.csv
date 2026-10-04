@@ -30,3 +30,5 @@ Settings sync across machines,settings,could,yes,no,
 Plan usage tab with live updates and pace warning,ai,should,yes,yes,claude -p /usage (no cost) every 30 s while open
 Account menu with language help upgrade and API key,ai,should,yes,yes,claude.ai pages open in the web tab
 Skills view: list create install from GitHub and use,ai,should,yes,yes,~/.claude/skills and .claude/skills
+Attach pictures and files to a message,ai,should,yes,yes,paperclip drop and paste; images inline
+Merge Claude's cloud pull requests,ai,could,yes,yes,gh pr list and gh pr merge

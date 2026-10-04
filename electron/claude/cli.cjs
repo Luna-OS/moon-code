@@ -53,14 +53,16 @@ function chatArgs(opts = {}) {
       `Always answer the user in ${language}, whatever language the code or the files are in.`,
     );
   }
+  // Where the panel's attachments are saved, so Claude may read them.
+  if (opts.attachmentsDir) args.push("--add-dir", String(opts.attachmentsDir));
   const tools = (opts.allowedTools || []).filter(Boolean);
   if (tools.length) args.push("--allowedTools", tools.join(","));
   return args;
 }
 
-/** One user message as Claude Code's stream-json input expects it. */
-function userMessageLine(text) {
-  return `${JSON.stringify({ type: "user", message: { role: "user", content: text } })}\n`;
+/** One user message as Claude Code's stream-json input expects it (text, or content blocks). */
+function userMessageLine(content) {
+  return `${JSON.stringify({ type: "user", message: { role: "user", content } })}\n`;
 }
 
 /** Quotes an argument for cmd.exe (only needed for a claude.cmd shim). */

@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld("moonCode", {
   claudeSessions: (projectPath) => call("claude:sessions", projectPath),
   claudeLogout: () => call("claude:logout"),
   claudeStart: (chatId, opts) => call("claude:start", chatId, opts),
-  claudeSend: (chatId, text) => call("claude:send", chatId, text),
+  claudeSend: (chatId, text, files) => call("claude:send", chatId, text, files),
   claudeStop: (chatId) => call("claude:stop", chatId),
   claudeCheckLimits: () => call("claude:checkLimits"),
   claudeUsage: () => call("claude:usage"),
@@ -68,6 +68,8 @@ contextBridge.exposeInMainWorld("moonCode", {
   githubAccount: () => call("github:account"),
   githubRepos: () => call("github:repos"),
   githubClone: (cloneUrl, name) => call("github:clone", cloneUrl, name),
+  githubPulls: (repo) => call("github:pulls", repo),
+  githubMerge: (repo, number, draft) => call("github:merge", repo, number, draft),
 
   updateState: () => call("update:state"),
   updateCheck: () => call("update:check"),

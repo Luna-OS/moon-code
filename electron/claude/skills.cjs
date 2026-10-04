@@ -2,12 +2,12 @@
 // Claude Code's skills: folders with a SKILL.md that Claude loads when a task needs them. Personal
 // ones live in ~/.claude/skills (every project), a project's own in <project>/.claude/skills. The
 // Skills view lists both, makes new ones and installs skills from a GitHub repository (every folder
-// with a SKILL.md in it is copied into ~/.claude/skills).
+// with a SKILL.md in it is copied into ~/.claude/skills; no git needed).
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { spawn } = require("child_process");
 const { claudeHome } = require("./account.cjs");
+const { extractTarGz } = require("../tar.cjs");
 
 const personalDir = (home = claudeHome()) => path.join(home, "skills");
 const projectDir = (project) => path.join(project, ".claude", "skills");
@@ -132,41 +132,47 @@ function findSkillDirs(root, depth = 4) {
   return out;
 }
 
-/** A GitHub repository from "owner/name", a github.com link or a .git URL; null otherwise. */
+/**
+ * A GitHub repository from "owner/name", a github.com link or a .git URL – and, for a link to a
+ * folder (…/tree/<branch>/<folder>), that folder. Null for anything else.
+ */
 function gitUrl(input) {
   const s = String(input || "").trim();
-  if (/^[\w.-]+\/[\w.-]+$/.test(s))
-    return { url: `https://github.com/${s}.git`, name: s.split("/")[1] };
-  const m =
-    /^(?:https?:\/\/)?(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/?#].*)?$/.exec(s);
-  return m ? { url: `https://github.com/${m[1]}/${m[2]}.git`, name: m[2] } : null;
+  let m = /^([\w.-]+)\/([\w.-]+?)(?:\.git)?$/.exec(s);
+  if (m) return { owner: m[1], repo: m[2], name: m[2], sub: "" };
+  m =
+    /^(?:https?:\/\/)?(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/tree\/[^/?#]+\/([^?#]+))?(?:[/?#].*)?$/.exec(
+      s,
+    );
+  return m ? { owner: m[1], repo: m[2], name: m[2], sub: (m[3] || "").replace(/\/+$/, "") } : null;
 }
 
-function gitClone(url, target) {
-  return new Promise((resolve, reject) => {
-    const child = spawn("git", ["clone", "--depth", "1", "--", url, target], { windowsHide: true });
-    let err = "";
-    child.stderr.on("data", (d) => (err = (err + d).slice(-2000)));
-    child.on("error", reject);
-    child.on("close", (code) =>
-      code === 0 ? resolve() : reject(new Error(err.trim() || `git clone failed (${code}).`)),
-    );
-  });
+/** Removes a folder; on Windows a file in use or read-only must not fail what already worked. */
+function removeQuietly(dir) {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+  } catch {
+    // a temporary folder left behind is harmless
+  }
 }
 
 /**
- * Installs the skills of a GitHub repository as personal skills: clones it (shallow, into a
- * temporary folder) and copies every folder with a SKILL.md into ~/.claude/skills. Skills that
- * are there already are replaced. Resolves to the installed folder names.
+ * Installs the skills of a GitHub repository as personal skills: downloads the repository's
+ * archive (no git needed – `download(owner, repo)` resolves to a .tar.gz), unpacks it into a
+ * temporary folder and copies every folder with a SKILL.md (in the linked folder, when the link
+ * points into one) into ~/.claude/skills. Skills that are there already are replaced. Resolves to
+ * the installed folder names.
  */
-async function installFromGitHub(input, { home = claudeHome(), clone = gitClone } = {}) {
+async function installFromGitHub(input, { home = claudeHome(), download } = {}) {
   const repo = gitUrl(input);
   if (!repo) throw new Error("That isn't a GitHub repository (owner/name or its link).");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "moon-code-skill-"));
   try {
     const src = path.join(tmp, "repo");
-    await clone(repo.url, src);
-    const dirs = findSkillDirs(src);
+    extractTarGz(await download(repo.owner, repo.repo), src);
+    const base = repo.sub ? path.join(src, ...repo.sub.split("/")) : src;
+    if (!fs.existsSync(base)) throw new Error(`${repo.name} has no folder ${repo.sub}.`);
+    const dirs = findSkillDirs(base);
     if (!dirs.length) throw new Error(`${repo.name} has no SKILL.md in it.`);
     const dest = personalDir(home);
     fs.mkdirSync(dest, { recursive: true });
@@ -174,16 +180,20 @@ async function installFromGitHub(input, { home = claudeHome(), clone = gitClone 
     for (const dir of dirs) {
       const name = dir === src ? skillSlug(repo.name) : path.basename(dir);
       const target = path.join(dest, name);
-      fs.rmSync(target, { recursive: true, force: true });
-      fs.cpSync(dir, target, {
-        recursive: true,
-        filter: (p) => !p.split(path.sep).includes(".git"),
-      });
+      try {
+        fs.rmSync(target, { recursive: true, force: true, maxRetries: 3 });
+      } catch (err) {
+        throw new Error(
+          `The skill ${name} is already there and couldn't be replaced (${err.code || err.message}). ` +
+            "Close programs that use its files and try again.",
+        );
+      }
+      fs.cpSync(dir, target, { recursive: true });
       installed.push(name);
     }
     return installed;
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
+    removeQuietly(tmp);
   }
 }
 

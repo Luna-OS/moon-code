@@ -1,15 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  AlertIcon,
-  BackIcon,
-  CloudIcon,
-  ExternalIcon,
-  ForwardIcon,
-  ReloadIcon,
-} from "../theme/icons";
+import { AlertIcon, BackIcon, CloudIcon, ExternalIcon, ReloadIcon } from "../theme/icons";
 
 /** The <webview> methods and events the cloud tab uses. */
 interface WebviewElement extends HTMLElement {
+  insertCSS(css: string): Promise<string>;
   loadURL(url: string): Promise<void>;
   getURL(): string;
   canGoBack(): boolean;
@@ -21,6 +15,59 @@ interface WebviewElement extends HTMLElement {
 
 /** The webview's session (electron/cloud.cjs): the claude.ai sign-in stays between starts. */
 const PARTITION = "persist:claude-web";
+
+/** claude.ai's colour variables (hue saturation% lightness%) set to the Moon palette. */
+const moonVars = (v: Record<string, string>) =>
+  `:root, :root[data-mode], .dark, [data-theme] { ${Object.entries(v)
+    .map(([k, x]) => `--${k}: ${x} !important;`)
+    .join(" ")} }`;
+const MOON_WEB_CSS = {
+  dark:
+    moonVars({
+      "bg-000": "248 49.3% 14.7%",
+      "bg-100": "247 50.9% 10.4%",
+      "bg-200": "245 56.1% 8%",
+      "bg-300": "248 50% 12.5%",
+      "bg-400": "248 48.3% 17.5%",
+      "bg-500": "248 40% 22%",
+      "text-000": "38 57.9% 96.3%",
+      "text-100": "38 57.9% 96.3%",
+      "text-200": "249 30% 82%",
+      "text-300": "249 20% 70%",
+      "text-400": "249 15% 60%",
+      "text-500": "249 12% 50%",
+      "border-100": "249 90.6% 83.3% / 0.12",
+      "border-200": "249 90.6% 83.3% / 0.18",
+      "border-300": "249 90.6% 83.3% / 0.26",
+      "border-400": "249 90.6% 83.3% / 0.36",
+      "accent-main-000": "249 92% 90.2%",
+      "accent-main-100": "249 90.6% 83.3%",
+      "accent-main-200": "248 65% 65.3%",
+      "accent-brand": "249 90.6% 83.3%",
+      "accent-pro-100": "249 90.6% 83.3%",
+      "accent-secondary-100": "199 82% 78%",
+      "oncolor-100": "245 56.1% 8%",
+      "always-black": "245 56.1% 8%",
+    }) + " html, body { background: #100d28 !important; } ::selection { background: #b9aefb55; }",
+  light:
+    moonVars({
+      "bg-000": "0 0% 100%",
+      "bg-100": "260 47% 96%",
+      "bg-200": "262 40% 93%",
+      "bg-300": "262 36% 90%",
+      "bg-400": "262 30% 86%",
+      "text-000": "252 38% 15%",
+      "text-100": "252 38% 15%",
+      "text-200": "252 20% 30%",
+      "text-300": "252 15% 42%",
+      "text-400": "252 12% 52%",
+      "accent-main-000": "248 55% 52%",
+      "accent-main-100": "248 50% 53%",
+      "accent-main-200": "248 55% 45%",
+      "accent-brand": "248 50% 53%",
+      "oncolor-100": "0 0% 100%",
+    }) + " ::selection { background: #7d6de033; }",
+};
 
 /** What the address line shows: the path on claude.ai, or the whole address elsewhere. */
 function shortUrl(url: string) {
@@ -44,6 +91,8 @@ export function CloudWeb({
   nonce,
   embedded,
   visible,
+  title = null,
+  theme = "dark",
   onOpenExternal,
 }: {
   url: string;
@@ -52,10 +101,19 @@ export function CloudWeb({
   /** False in the demo, where there is no <webview>. */
   embedded: boolean;
   visible: boolean;
+  /** What the tab shows (the session's task, when Moon Code started it). */
+  title?: string | null;
+  /** Moon Code's theme: claude.ai is drawn in its colours. */
+  theme?: "dark" | "light";
   onOpenExternal: (url: string) => void;
 }) {
   const ref = useRef<WebviewElement | null>(null);
   const ready = useRef(false);
+  const themeRef = useRef(theme);
+  useEffect(() => {
+    themeRef.current = theme;
+    if (ready.current) void ref.current?.insertCSS(MOON_WEB_CSS[theme]).catch(() => {});
+  }, [theme]);
   /** The address asked for last (it may change before the page is ready). */
   const want = useRef(url);
   const [src] = useState(url);
@@ -73,6 +131,9 @@ export function CloudWeb({
       setNav({ back: view.canGoBack(), forward: view.canGoForward() });
     };
     const onReady = () => {
+      // claude.ai in the Moon palette (its colours are CSS variables of hue, saturation and
+      // lightness); every page load needs it again.
+      void view.insertCSS(MOON_WEB_CSS[themeRef.current]).catch(() => {});
       if (!ready.current) {
         ready.current = true;
         if (want.current !== src) void view.loadURL(want.current).catch(() => {});
@@ -128,58 +189,46 @@ export function CloudWeb({
       aria-hidden={!visible}
     >
       <div
-        className="flex h-9 shrink-0 items-center gap-1 border-b border-[var(--mc-border)] px-2"
+        className="mc-section-title shrink-0 border-b border-[var(--mc-border)]"
+        style={{ height: "2.4rem", textTransform: "none", letterSpacing: 0 }}
         role="toolbar"
         aria-label="Claude Code on the web"
       >
-        <button
-          type="button"
-          className="mc-icon-btn"
-          style={{ width: 26, height: 26 }}
-          aria-label="Back"
-          disabled={!embedded || !nav.back}
-          onClick={() => ref.current?.goBack()}
+        {embedded && nav.back && (
+          <button
+            type="button"
+            className="mc-icon-btn"
+            style={{ width: 26, height: 26 }}
+            aria-label="Back"
+            title="Back"
+            onClick={() => ref.current?.goBack()}
+          >
+            <BackIcon />
+          </button>
+        )}
+        <span style={{ color: "var(--mc-accent)" }}>
+          <CloudIcon size={15} />
+        </span>
+        <span className="text-[0.8125rem] font-semibold text-[var(--mc-text)]">
+          {title ?? "Claude in the cloud"}
+        </span>
+        <span
+          className="min-w-0 flex-1 truncate text-[0.6875rem] font-normal text-[var(--mc-text-faint)]"
+          aria-label="Address"
+          title={shown}
         >
-          <BackIcon />
-        </button>
-        <button
-          type="button"
-          className="mc-icon-btn"
-          style={{ width: 26, height: 26 }}
-          aria-label="Forward"
-          disabled={!embedded || !nav.forward}
-          onClick={() => ref.current?.goForward()}
-        >
-          <ForwardIcon />
-        </button>
+          {shortUrl(shown)}
+        </span>
         <button
           type="button"
           className="mc-icon-btn"
           style={{ width: 26, height: 26 }}
           aria-label="Reload"
+          title="Reload"
           disabled={!embedded}
           onClick={() => ref.current?.reload()}
         >
           <ReloadIcon size={14} />
-        </button>
-        <div
-          className="mc-input flex min-w-0 flex-1 items-center gap-1.5 py-1 text-[0.75rem]"
-          title={shown}
-        >
-          <span style={{ color: "var(--mc-accent)" }}>
-            <CloudIcon size={13} />
-          </span>
-          <span className="min-w-0 truncate text-[var(--mc-text-muted)]" aria-label="Address">
-            {shortUrl(shown)}
-          </span>
-        </div>
-        <button
-          type="button"
-          className="mc-btn mc-btn-ghost mc-btn-sm"
-          title="Open this page in your browser"
-          onClick={() => onOpenExternal(shown)}
-        >
-          <ExternalIcon /> Browser
         </button>
       </div>
       {embedded && loading && <div className="mc-loading-bar" aria-hidden="true" />}

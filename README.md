@@ -34,6 +34,8 @@ component from Microsoft – and your own Claude Code.
   everything else from the Claude app: Claude's language, help, upgrading, the apps, an API key.
 - **Skills**: see, make and install Claude Code skills (also straight from a GitHub repository)
   and call one in the chat with "Use".
+- **Pictures and files**: give Claude screenshots, PDFs or any file with the paperclip, by
+  dropping them on the message box, or by pasting.
 - **Signs in to GitHub** through the GitHub CLI (`gh auth login` in a terminal tab, offered to be
   installed if it's missing): your avatar and account in Projects and Cloud, your private
   repositories in Projects.

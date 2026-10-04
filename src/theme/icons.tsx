@@ -124,6 +124,12 @@ export const SkillsIcon = ({ size = 22 }: P) => (
   </Svg>
 );
 
+export const AttachIcon = ({ size = 15 }: P) => (
+  <Svg size={size}>
+    <path d="m21 11-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.6 8.6a1.8 1.8 0 0 1-2.6-2.6L15 7" />
+  </Svg>
+);
+
 export const BackIcon = ({ size = 15 }: P) => (
   <Svg size={size}>
     <path d="M19 12H5M11 18l-6-6 6-6" />

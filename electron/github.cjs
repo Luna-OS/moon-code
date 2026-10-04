@@ -158,4 +158,122 @@ function clone(cloneUrl, parent, name) {
   });
 }
 
-module.exports = { listRepos, clone, normalizeRepo, account, parseUser, findGh };
+/**
+ * A repository's files as a .tar.gz (no git needed): GitHub's public archive first, then – for a
+ * private repository – through the signed-in GitHub CLI.
+ */
+async function downloadTarball(owner, repo, fetchImpl) {
+  const res = await fetchImpl(`https://api.github.com/repos/${owner}/${repo}/tarball`, {
+    headers: { "User-Agent": "Moon-Code", Accept: "application/vnd.github+json" },
+  });
+  if (res.ok) return Buffer.from(await res.arrayBuffer());
+  const gh = findGh();
+  if (gh && (res.status === 404 || res.status === 403)) {
+    const viaCli = await new Promise((resolve) => {
+      const child = spawn(gh, ["api", `repos/${owner}/${repo}/tarball`], { windowsHide: true });
+      const chunks = [];
+      child.stdout.on("data", (d) => chunks.push(d));
+      child.on("error", () => resolve(null));
+      child.on("close", (code) => resolve(code === 0 ? Buffer.concat(chunks) : null));
+    });
+    if (viaCli && viaCli.length) return viaCli;
+  }
+  throw new Error(
+    res.status === 404
+      ? `${owner}/${repo} wasn't found. If it is private, sign in to GitHub in Moon Code first.`
+      : `GitHub didn't hand out ${owner}/${repo} (${res.status}).`,
+  );
+}
+
+/** "passing", "failing", "pending" or "none", from `gh pr list`'s statusCheckRollup. */
+function checksOf(rollup) {
+  const list = Array.isArray(rollup) ? rollup : [];
+  if (!list.length) return "none";
+  const states = list.map((c) => String(c.conclusion || c.state || c.status || "").toUpperCase());
+  if (
+    states.some((s) =>
+      ["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"].includes(s),
+    )
+  ) {
+    return "failing";
+  }
+  if (
+    states.some((s) => ["", "PENDING", "QUEUED", "IN_PROGRESS", "EXPECTED", "WAITING"].includes(s))
+  ) {
+    return "pending";
+  }
+  return "passing";
+}
+
+/** A pull request as the Cloud view shows it, from `gh pr list --json …`. */
+function normalizePull(p) {
+  return {
+    number: p.number,
+    title: p.title || "",
+    branch: p.headRefName || "",
+    url: p.url || "",
+    draft: Boolean(p.isDraft),
+    mergeable: p.mergeable === "MERGEABLE" ? true : p.mergeable === "CONFLICTING" ? false : null,
+    checks: checksOf(p.statusCheckRollup),
+    updated: p.updatedAt ? Date.parse(p.updatedAt) || 0 : 0,
+  };
+}
+
+const REPO = /^[\w.-]+\/[\w.-]+$/;
+
+/** The open pull requests Claude made in `repo` (its branches start with "claude/"). */
+async function claudePulls(repo) {
+  if (!REPO.test(String(repo))) throw new Error("That isn't a repository (owner/name).");
+  const gh = findGh();
+  if (!gh) return [];
+  const out = await run(gh, [
+    "pr",
+    "list",
+    "--repo",
+    repo,
+    "--state",
+    "open",
+    "--limit",
+    "50",
+    "--json",
+    "number,title,headRefName,url,isDraft,mergeable,statusCheckRollup,updatedAt",
+  ]);
+  return JSON.parse(out || "[]")
+    .filter((p) => String(p.headRefName || "").startsWith("claude/"))
+    .map(normalizePull)
+    .sort((a, b) => b.updated - a.updated);
+}
+
+/** Merges a pull request (a draft is marked ready first) with a merge commit. */
+async function mergePull(repo, number, draft) {
+  if (!REPO.test(String(repo)) || !Number.isInteger(number)) {
+    throw new Error("That isn't a pull request.");
+  }
+  const gh = findGh();
+  if (!gh) throw new Error("The GitHub CLI isn't installed.");
+  try {
+    if (draft) await run(gh, ["pr", "ready", String(number), "--repo", repo]);
+    await run(gh, ["pr", "merge", String(number), "--repo", repo, "--merge"]);
+  } catch (err) {
+    throw new Error(
+      String(err.stderr || err.message)
+        .trim()
+        .split("\n")
+        .pop(),
+    );
+  }
+}
+
+module.exports = {
+  listRepos,
+  clone,
+  normalizeRepo,
+  account,
+  parseUser,
+  findGh,
+  downloadTarball,
+  claudePulls,
+  mergePull,
+  normalizePull,
+  checksOf,
+};
