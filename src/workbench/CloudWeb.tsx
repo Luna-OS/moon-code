@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertIcon, BackIcon, CloudIcon, ExternalIcon, ReloadIcon } from "../theme/icons";
+import { pageScript } from "./cloud-page";
 
 /** The <webview> methods and events the cloud tab uses. */
 interface WebviewElement extends HTMLElement {
-  insertCSS(css: string): Promise<string>;
+  executeJavaScript(code: string): Promise<unknown>;
   loadURL(url: string): Promise<void>;
   getURL(): string;
   canGoBack(): boolean;
@@ -15,59 +16,6 @@ interface WebviewElement extends HTMLElement {
 
 /** The webview's session (electron/cloud.cjs): the claude.ai sign-in stays between starts. */
 const PARTITION = "persist:claude-web";
-
-/** claude.ai's colour variables (hue saturation% lightness%) set to the Moon palette. */
-const moonVars = (v: Record<string, string>) =>
-  `:root, :root[data-mode], .dark, [data-theme] { ${Object.entries(v)
-    .map(([k, x]) => `--${k}: ${x} !important;`)
-    .join(" ")} }`;
-const MOON_WEB_CSS = {
-  dark:
-    moonVars({
-      "bg-000": "248 49.3% 14.7%",
-      "bg-100": "247 50.9% 10.4%",
-      "bg-200": "245 56.1% 8%",
-      "bg-300": "248 50% 12.5%",
-      "bg-400": "248 48.3% 17.5%",
-      "bg-500": "248 40% 22%",
-      "text-000": "38 57.9% 96.3%",
-      "text-100": "38 57.9% 96.3%",
-      "text-200": "249 30% 82%",
-      "text-300": "249 20% 70%",
-      "text-400": "249 15% 60%",
-      "text-500": "249 12% 50%",
-      "border-100": "249 90.6% 83.3% / 0.12",
-      "border-200": "249 90.6% 83.3% / 0.18",
-      "border-300": "249 90.6% 83.3% / 0.26",
-      "border-400": "249 90.6% 83.3% / 0.36",
-      "accent-main-000": "249 92% 90.2%",
-      "accent-main-100": "249 90.6% 83.3%",
-      "accent-main-200": "248 65% 65.3%",
-      "accent-brand": "249 90.6% 83.3%",
-      "accent-pro-100": "249 90.6% 83.3%",
-      "accent-secondary-100": "199 82% 78%",
-      "oncolor-100": "245 56.1% 8%",
-      "always-black": "245 56.1% 8%",
-    }) + " html, body { background: #100d28 !important; } ::selection { background: #b9aefb55; }",
-  light:
-    moonVars({
-      "bg-000": "0 0% 100%",
-      "bg-100": "260 47% 96%",
-      "bg-200": "262 40% 93%",
-      "bg-300": "262 36% 90%",
-      "bg-400": "262 30% 86%",
-      "text-000": "252 38% 15%",
-      "text-100": "252 38% 15%",
-      "text-200": "252 20% 30%",
-      "text-300": "252 15% 42%",
-      "text-400": "252 12% 52%",
-      "accent-main-000": "248 55% 52%",
-      "accent-main-100": "248 50% 53%",
-      "accent-main-200": "248 55% 45%",
-      "accent-brand": "248 50% 53%",
-      "oncolor-100": "0 0% 100%",
-    }) + " ::selection { background: #7d6de033; }",
-};
 
 /** What the address line shows: the path on claude.ai, or the whole address elsewhere. */
 function shortUrl(url: string) {
@@ -112,8 +60,20 @@ export function CloudWeb({
   const themeRef = useRef(theme);
   useEffect(() => {
     themeRef.current = theme;
-    if (ready.current) void ref.current?.insertCSS(MOON_WEB_CSS[theme]).catch(() => {});
-  }, [theme]);
+  });
+  /** The Moon colours in the page (cloud-page.ts). */
+  const tune = useCallback(() => {
+    const view = ref.current;
+    if (!view || !ready.current) return;
+    view.executeJavaScript(pageScript({ theme: themeRef.current })).catch(() => {});
+  }, []);
+  useEffect(() => tune(), [theme, tune]);
+  // claude.ai builds its pages bit by bit: look again every few seconds while the tab is shown.
+  useEffect(() => {
+    if (!visible || !embedded) return;
+    const t = setInterval(tune, 3000);
+    return () => clearInterval(t);
+  }, [visible, embedded, tune]);
   /** The address asked for last (it may change before the page is ready). */
   const want = useRef(url);
   const [src] = useState(url);
@@ -131,14 +91,12 @@ export function CloudWeb({
       setNav({ back: view.canGoBack(), forward: view.canGoForward() });
     };
     const onReady = () => {
-      // claude.ai in the Moon palette (its colours are CSS variables of hue, saturation and
-      // lightness); every page load needs it again.
-      void view.insertCSS(MOON_WEB_CSS[themeRef.current]).catch(() => {});
       if (!ready.current) {
         ready.current = true;
         if (want.current !== src) void view.loadURL(want.current).catch(() => {});
       }
       sync();
+      tune();
     };
     const onStart = () => {
       setLoading(true);
@@ -156,10 +114,15 @@ export function CloudWeb({
     const onStop = () => {
       setLoading(false);
       sync();
+      tune();
+    };
+    const onInPage = () => {
+      sync();
+      tune();
     };
     view.addEventListener("dom-ready", onReady);
     view.addEventListener("did-navigate", sync);
-    view.addEventListener("did-navigate-in-page", sync);
+    view.addEventListener("did-navigate-in-page", onInPage);
     view.addEventListener("did-start-loading", onStart);
     view.addEventListener("did-stop-loading", onStop);
     view.addEventListener("did-fail-load", onFail);
@@ -167,11 +130,11 @@ export function CloudWeb({
       view.removeEventListener("did-fail-load", onFail);
       view.removeEventListener("dom-ready", onReady);
       view.removeEventListener("did-navigate", sync);
-      view.removeEventListener("did-navigate-in-page", sync);
+      view.removeEventListener("did-navigate-in-page", onInPage);
       view.removeEventListener("did-start-loading", onStart);
       view.removeEventListener("did-stop-loading", onStop);
     };
-  }, [src]);
+  }, [src, tune]);
 
   // A new address (another session, or the same one asked for again) loads in the open page.
   useEffect(() => {

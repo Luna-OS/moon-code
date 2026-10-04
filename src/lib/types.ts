@@ -152,13 +152,6 @@ export interface CloudTask {
   url?: string;
 }
 
-/** A follow-up that reached a cloud session. */
-export interface CloudSent {
-  ok: true;
-  sessionId: string | null;
-  url: string | null;
-}
-
 export interface ClaudeProject {
   path: string;
   name: string;
@@ -173,19 +166,6 @@ export interface ClaudeSession {
   updated: number;
   title: string | null;
   branch: string | null;
-}
-
-/** A pull request from a cloud session (its branch starts with "claude/"). */
-export interface PullRequest {
-  number: number;
-  title: string;
-  branch: string;
-  url: string;
-  draft: boolean;
-  /** null while GitHub is still working it out. */
-  mergeable: boolean | null;
-  checks: "passing" | "failing" | "pending" | "none";
-  updated: number;
 }
 
 export interface Repo {
@@ -322,9 +302,6 @@ export interface MoonCodeBridge {
   /** The plan's usage from `/usage` (no cost), or null when Claude Code has no plan numbers. */
   claudeUsage(): Promise<PlanUsage | null>;
 
-  /** Queues `message` into a cloud session (`claude -p … --cloud <ref>`). */
-  cloudSend(ref: string, message: string): Promise<CloudSent>;
-
   /** The open project's skills and the personal ones. */
   skillsList(project: string | null): Promise<Skill[]>;
   /** Makes a new skill; resolves to its SKILL.md. */
@@ -342,10 +319,6 @@ export interface MoonCodeBridge {
   githubAccount(): Promise<GitHubAccount>;
   githubRepos(): Promise<{ source: "gh" | "api" | "none"; repos: Repo[] }>;
   githubClone(cloneUrl: string, name: string): Promise<string>;
-  /** The open pull requests Claude made in a repository ("owner/name"). */
-  githubPulls(repo: string): Promise<PullRequest[]>;
-  /** Merges a pull request (marks a draft ready first). */
-  githubMerge(repo: string, number: number, draft: boolean): Promise<void>;
 
   updateState(): Promise<UpdateStatus>;
   updateCheck(): Promise<UpdateStatus>;

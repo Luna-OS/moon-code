@@ -7,14 +7,12 @@ import { languageName, languageOf, kindColor } from "./lib/languages";
 import { basename, relative, resolveIn } from "./lib/paths";
 import type {
   ClaudeAccount,
-  CloudTask,
   GitHubAccount,
   MoonCodeBridge,
   PlanUsage,
   RateLimit,
   Settings,
   SysInfo,
-  Repo,
   UpdateStatus,
 } from "./lib/types";
 import { ActivityBar, Sash, StatusBar, TitleBar, type SideView } from "./workbench/chrome";
@@ -25,7 +23,6 @@ import { ClaudePanel, type ClaudeInfo, type ResumeRequest } from "./workbench/Cl
 import { QuickOpen, type Command } from "./workbench/QuickOpen";
 import { Welcome } from "./workbench/Welcome";
 import { SettingsDialog } from "./workbench/SettingsDialog";
-import { CloudView } from "./workbench/CloudView";
 import { SkillsView } from "./workbench/SkillsView";
 import { CloudWeb } from "./workbench/CloudWeb";
 import { UsageView } from "./workbench/UsageView";
@@ -88,11 +85,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
   const [github, setGithub] = useState<GitHubAccount | null>(null);
   /** Polling for the GitHub account while `gh auth login` / `logout` runs in a terminal. */
   const [waitingForGithub, setWaitingForGithub] = useState<"in" | "out" | null>(null);
-  /** "owner/name" of the open folder's GitHub remote. */
-  const [repo, setRepo] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
-  /** The GitHub repositories for the Cloud view (null while they load). */
-  const [cloudRepos, setCloudRepos] = useState<Repo[] | null>(null);
   /** The cloud tab (claude.ai/code inside Moon Code), when it is open. */
   const [web, setWeb] = useState<{ url: string; nonce: number } | null>(null);
   /** Which kind of tab is in front: a file, the web tab or the Usage tab. */
@@ -104,8 +97,6 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
   /** When the usage numbers last arrived (from `/usage` or a message to Claude). */
   const [usageAt, setUsageAt] = useState<number | null>(null);
   const [accountMenu, setAccountMenu] = useState(false);
-  /** The terminals running `claude --cloud` for a task, by terminal: the task's `at`. */
-  const cloudTerminals = useRef(new Map<string, number>());
 
   const theme = useDocumentTheme(settings?.theme ?? "dark");
   useEffect(() => {
@@ -154,17 +145,13 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       );
   }, [bridge]);
 
-  /** The branch and the GitHub repository of a folder, for the status bar and the cloud. */
+  /** The branch of a folder, for the status bar. */
   const loadGitInfo = useCallback(
     (path: string) => {
       bridge
         .gitBranch(path)
         .then(setBranch)
         .catch(() => setBranch(null));
-      bridge
-        .gitHubRepo(path)
-        .then(setRepo)
-        .catch(() => setRepo(null));
     },
     [bridge],
   );
@@ -224,20 +211,6 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
     refreshAccount();
     refreshGithub();
   }, [bridge, refreshAccount, refreshGithub, loadGitInfo]);
-
-  // The Cloud view lists the signed-in GitHub account's repositories.
-  const githubLogin = github?.loggedIn ? github.login : null;
-  useEffect(() => {
-    if (view !== "cloud" || !githubLogin) return;
-    let cancelled = false;
-    bridge
-      .githubRepos()
-      .then((r) => !cancelled && setCloudRepos(r.repos))
-      .catch(() => !cancelled && setCloudRepos([]));
-    return () => {
-      cancelled = true;
-    };
-  }, [bridge, view, githubLogin]);
 
   // Moon Code's own updates: the state now, and every change (a check at start, a download…).
   const announced = useRef<string | null>(null);
@@ -409,12 +382,6 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
     setClaudeOpen(true);
   }, [newTerminal, claudeExe]);
 
-  /** Runs `claude <args>` in a new terminal tab (the cloud commands are interactive). */
-  const runClaude = useCallback(
-    (args: string[], title: string, cwd?: string) => newTerminal([claudeExe, ...args], title, cwd),
-    [newTerminal, claudeExe],
-  );
-
   /** Shows `url` (a claude.ai/code page) in the cloud tab. */
   const openWeb = useCallback((url: string) => {
     setWeb({ url, nonce: Date.now() });
@@ -469,99 +436,16 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
     }
   }, [newTerminal, sys, bridge]);
 
-  const addCloudTask = useCallback(
-    (task: CloudTask) =>
-      setSettings((s) => {
-        if (!s) return s;
-        const cloudTasks = [task, ...s.cloudTasks].slice(0, 30);
-        bridge.setSettings({ cloudTasks }).catch(() => {});
-        return { ...s, cloudTasks };
-      }),
-    [bridge],
-  );
-
-  const updateCloudTask = useCallback(
-    (at: number, patch: Partial<CloudTask>) =>
-      setSettings((s) => {
-        if (!s) return s;
-        const cloudTasks = s.cloudTasks.map((t) => (t.at === at ? { ...t, ...patch } : t));
-        bridge.setSettings({ cloudTasks }).catch(() => {});
-        return { ...s, cloudTasks };
-      }),
-    [bridge],
-  );
-
-  // `claude --cloud` printed its session's link: remember it with the task and show the session
-  // here, in the cloud tab – not in a browser or the Claude app.
+  // A session link `claude --cloud` printed in a terminal, or one clicked anywhere in the
+  // workbench, opens in the cloud tab – not in a browser or the Claude app.
   useEffect(() => {
-    const offSession = bridge.on("cloud:session", ({ terminalId, id, url }) => {
-      const at = cloudTerminals.current.get(terminalId);
-      if (at === undefined) return;
-      cloudTerminals.current.delete(terminalId);
-      updateCloudTask(at, { sessionId: id, url });
-      openWeb(url);
-    });
+    const offSession = bridge.on("cloud:session", ({ url }) => openWeb(url));
     const offOpen = bridge.on("cloud:open", ({ url }) => openWeb(url));
     return () => {
       offSession();
       offOpen();
     };
-  }, [bridge, updateCloudTask, openWeb]);
-
-  /**
-   * Continues cloud session `id` on this computer (`claude --teleport`), in a checkout of its
-   * repository: the open folder when it is that one, else Moon Code's clone (made once).
-   */
-  const teleport = useCallback(
-    async (id: string, repoName: string | null) => {
-      let cwd: string | undefined;
-      if (repoName && repoName !== repo) {
-        try {
-          cwd = await bridge.githubClone(
-            `https://github.com/${repoName}.git`,
-            repoName.split("/").pop() ?? repoName,
-          );
-        } catch (e) {
-          notify((e as Error).message);
-          return;
-        }
-      }
-      runClaude(["--teleport", id], "Cloud session here", cwd);
-    },
-    [bridge, repo, runClaude, notify],
-  );
-
-  /**
-   * A cloud task on `target`, or on the open folder's repository (null). Another repository is
-   * cloned first (once – an existing clone is reused), because `claude --cloud` works on the
-   * repository of the folder it runs in.
-   */
-  const startCloudTask = useCallback(
-    async (task: string, target: Repo | null) => {
-      let cwd: string | undefined;
-      let name = repo;
-      if (target) {
-        try {
-          cwd = await bridge.githubClone(target.cloneUrl, target.name);
-        } catch (e) {
-          notify((e as Error).message);
-          return;
-        }
-        name = target.fullName;
-      }
-      const id = newTerminal(
-        [claudeExe, "--cloud", task],
-        `Cloud: ${task.length > 24 ? `${task.slice(0, 23)}…` : task}`,
-        cwd,
-      );
-      if (name) {
-        const at = Date.now();
-        cloudTerminals.current.set(id, at);
-        addCloudTask({ task, repo: name, at });
-      }
-    },
-    [bridge, repo, claudeExe, newTerminal, notify, addCloudTask],
-  );
+  }, [bridge, openWeb]);
 
   const installClaude = useCallback(() => {
     const win = sys?.platform === "win32";
@@ -691,7 +575,6 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       { id: "claude-ask", label: "Claude: Ask about the open file", run: () => askClaude("") },
       { id: "claude-signin", label: "Claude: Sign in", run: signIn },
       { id: "github-signin", label: "GitHub: Sign in", run: githubSignIn },
-      { id: "cloud", label: "Cloud: New task for Claude on the web", run: () => setView("cloud") },
       {
         id: "cloud-web",
         label: "Cloud: Open Claude Code on the web",
@@ -834,6 +717,8 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
           onView={toggleView}
           onClaude={() => setClaudeOpen((o) => !o)}
           accountOpen={accountMenu}
+          cloudOpen={Boolean(web) && front === "web"}
+          onCloud={() => (web ? setFront("web") : openWeb(CLAUDE_CODE_WEB))}
           onAccount={() => {
             setAccountMenu((o) => !o);
             refreshAccount();
@@ -897,28 +782,6 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                     setPrefill({ text: `/${name} `, nonce: Date.now() });
                   }}
                   onNotify={notify}
-                />
-              )}
-              {view === "cloud" && (
-                <CloudView
-                  bridge={bridge}
-                  claude={account}
-                  github={github}
-                  folder={folder}
-                  repo={repo}
-                  repos={cloudRepos}
-                  tasks={settings.cloudTasks ?? []}
-                  onRun={runClaude}
-                  onStartTask={startCloudTask}
-                  onOpenWeb={openWeb}
-                  onSend={(ref, message) => bridge.cloudSend(ref, message)}
-                  onTeleport={(id, repoName) => void teleport(id, repoName)}
-                  onClaudeSignIn={signIn}
-                  onGitHubSignIn={githubSignIn}
-                  onGitHubSignOut={githubSignOut}
-                  onGitHubInstall={installGithub}
-                  onGitHubRefresh={refreshGithub}
-                  onOpen={(url) => void bridge.openExternal(url)}
                 />
               )}
             </div>
@@ -1083,11 +946,6 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                 embedded={bridge.kind === "electron"}
                 visible={front === "web"}
                 theme={theme}
-                title={
-                  (settings.cloudTasks ?? []).find(
-                    (t) => t.sessionId && web.url.includes(t.sessionId),
-                  )?.task ?? null
-                }
                 onOpenExternal={(url) => void bridge.openExternal(url)}
               />
             )}

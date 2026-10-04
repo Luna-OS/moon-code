@@ -2,7 +2,17 @@
 // Moon Code – Electron main process: the window, the open folder's files, the terminals and the
 // bridge to the user's Claude Code CLI (chat, account, projects, limits).
 
-const { app, BrowserWindow, ipcMain, shell, dialog, Menu, net, session } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  shell,
+  dialog,
+  Menu,
+  net,
+  session,
+  nativeTheme,
+} = require("electron");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -184,6 +194,8 @@ handle("settings:get", () => settings.get());
 handle("settings:set", (_e, patch) => settings.set(patch));
 handle("win:setTheme", (_e, theme) => {
   const t = theme === "light" ? "light" : "dark";
+  // Pages in the cloud tab (claude.ai on "automatic") follow Moon Code's night or day.
+  nativeTheme.themeSource = t;
   if (mainWindow) {
     mainWindow.setBackgroundColor(FRAME[t].color);
     try {
@@ -286,23 +298,6 @@ handle("claude:checkLimits", async () => {
   return found;
 });
 
-// Cloud sessions
-/** Queues `message` into a cloud session (an ID or a claude.ai/code link). */
-handle("cloud:send", async (_e, ref, message) => {
-  const id = cloud.sessionRef(ref);
-  if (!id) throw new Error("That isn't a cloud session's link or ID.");
-  if (!String(message || "").trim()) throw new Error("The message is empty.");
-  const exe = claudeExe();
-  if (!exe) {
-    const err = new Error("Claude Code isn't installed.");
-    err.code = "ENOCLAUDE";
-    throw err;
-  }
-  return cloud.parseFollowUp(
-    await runClaude(exe, cloud.followUpArgs(id, message), { timeoutMs: 120_000 }),
-  );
-});
-
 /**
  * The plan's usage from Claude Code's `/usage` (runs locally, costs no usage), or null when it
  * has no plan numbers. The 5-hour and weekly windows also become the last known limits.
@@ -344,8 +339,6 @@ handle("github:account", () => github.account((url, opts) => net.fetch(url, opts
 handle("github:repos", () =>
   github.listRepos(settings.get().githubOwner, (url, opts) => net.fetch(url, opts)),
 );
-handle("github:pulls", (_e, repo) => github.claudePulls(repo));
-handle("github:merge", (_e, repo, number, draft) => github.mergePull(repo, number, draft));
 handle("github:clone", (_e, cloneUrl, name) =>
   github.clone(cloneUrl, settings.get().projectsFolder, name),
 );

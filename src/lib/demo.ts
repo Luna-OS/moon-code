@@ -17,7 +17,6 @@ import type {
   SysInfo,
   UpdateStatus,
   PlanUsage,
-  PullRequest,
   Skill,
 } from "./types";
 
@@ -434,14 +433,6 @@ export class DemoBridge implements MoonCodeBridge {
         : { ...base, loggedIn: false, login: null, name: null, url: null, avatar: null },
     );
   }
-  cloudSend(ref: string, message: string) {
-    this.sent.push({ ref, message });
-    return Promise.resolve({
-      ok: true as const,
-      sessionId: ref,
-      url: `https://claude.ai/code/${ref}`,
-    });
-  }
   /** The demo's skills (personal ones live in ~/.claude/skills). */
   skills: Skill[] = [
     ["replica-recon", "Maps an app before cloning it: screens, features and the feature matrix."],
@@ -510,36 +501,12 @@ export class DemoBridge implements MoonCodeBridge {
     return Promise.resolve();
   }
 
-  /** Follow-ups sent to cloud sessions in this demo (for the tests). */
-  sent: { ref: string; message: string }[] = [];
-
   githubRepos() {
     return Promise.resolve({ source: "api" as const, repos: REPOS });
   }
   githubClone(_url: string, name: string) {
     this.cloned.push(name);
     return Promise.resolve(join("/home/luna/Moon Code Projects", name));
-  }
-  pulls: PullRequest[] = [
-    {
-      number: 12,
-      title: "Add a progress bar to the extract dialog",
-      branch: "claude/progress-bar-k2Pq",
-      url: "https://github.com/Luna-OS/Moon-Zip/pull/12",
-      draft: true,
-      mergeable: true,
-      checks: "passing",
-      updated: now() - 2 * HOUR,
-    },
-  ];
-  merged: number[] = [];
-  githubPulls(repo: string) {
-    return Promise.resolve(repo === "Luna-OS/Moon-Zip" ? this.pulls : []);
-  }
-  githubMerge(_repo: string, number: number) {
-    this.merged.push(number);
-    this.pulls = this.pulls.filter((p) => p.number !== number);
-    return Promise.resolve();
   }
   /** Repositories cloned in this demo (for the tests). */
   cloned: string[] = [];

@@ -22,13 +22,9 @@ component from Microsoft – and your own Claude Code.
   full the conversation is and how much of your 5-hour and weekly limits is used** – as two moons
   that fill up. Pick the model, the permissions and the effort; allow a blocked command with one
   click. See [docs/claude.md](docs/claude.md).
-- **Codes in the cloud**: the **Cloud** view lists your GitHub repositories and hands a task for
-  any of them to Claude Code on the web (`claude --cloud`; one that isn't on this computer is
-  cloned first), which works on it in its own sandbox – your computer can
-  be off – and pushes a branch. The session opens right in Moon Code, in the **Cloud tab**
-  (claude.ai/code next to your files) – not in a browser or the Claude app. Send it follow-ups,
-  bring it back here (`--teleport`), start **Remote Control** to steer Claude from your phone, or
-  run an **Ultrareview** of the branch.
+- **Claude Code on the web, built in**: the cloud icon opens claude.ai/code as a tab of Moon Code –
+  drawn in the Moon colours, without browser buttons, signed in once. Session links from
+  `claude --cloud` in the terminal open there too.
 - **Usage, live**: a Usage tab like the Claude app's – session, week, per model, extra usage and
   a warning when your pace runs out before a reset – that updates by itself. The account menu has
   everything else from the Claude app: Claude's language, help, upgrading, the apps, an API key.
@@ -37,7 +33,7 @@ component from Microsoft – and your own Claude Code.
 - **Pictures and files**: give Claude screenshots, PDFs or any file with the paperclip, by
   dropping them on the message box, or by pasting.
 - **Signs in to GitHub** through the GitHub CLI (`gh auth login` in a terminal tab, offered to be
-  installed if it's missing): your avatar and account in Projects and Cloud, your private
+  installed if it's missing): your avatar and account in Projects, your private
   repositories in Projects.
 - **Has Axo**: a white pixel axolotl in the Claude panel. It sleeps until you sign in, blinks while
   it waits, types on its moon laptop – with mint code sparks – while Claude works (and says what
@@ -52,9 +48,9 @@ component from Microsoft – and your own Claude Code.
   background and installs it on "Restart and update". See [docs/updates.md](docs/updates.md).
 - **Night and day** themes (or follow Windows). See [docs/theme.md](docs/theme.md).
 
-| Cloud | Projects and the terminal | Continuing a conversation | Day theme |
+| Usage and skills | Projects and the terminal | Continuing a conversation | Day theme |
 | --- | --- | --- | --- |
-| ![Cloud](docs/screenshots/cloud.png) | ![Projects](docs/screenshots/projects.png) | ![Resume](docs/screenshots/resume.png) | ![Day](docs/screenshots/day.png) |
+| ![Usage and skills](docs/screenshots/skills-usage.png) | ![Projects](docs/screenshots/projects.png) | ![Resume](docs/screenshots/resume.png) | ![Day](docs/screenshots/day.png) |
 
 ## Run it
 

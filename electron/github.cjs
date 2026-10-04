@@ -185,85 +185,6 @@ async function downloadTarball(owner, repo, fetchImpl) {
   );
 }
 
-/** "passing", "failing", "pending" or "none", from `gh pr list`'s statusCheckRollup. */
-function checksOf(rollup) {
-  const list = Array.isArray(rollup) ? rollup : [];
-  if (!list.length) return "none";
-  const states = list.map((c) => String(c.conclusion || c.state || c.status || "").toUpperCase());
-  if (
-    states.some((s) =>
-      ["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"].includes(s),
-    )
-  ) {
-    return "failing";
-  }
-  if (
-    states.some((s) => ["", "PENDING", "QUEUED", "IN_PROGRESS", "EXPECTED", "WAITING"].includes(s))
-  ) {
-    return "pending";
-  }
-  return "passing";
-}
-
-/** A pull request as the Cloud view shows it, from `gh pr list --json …`. */
-function normalizePull(p) {
-  return {
-    number: p.number,
-    title: p.title || "",
-    branch: p.headRefName || "",
-    url: p.url || "",
-    draft: Boolean(p.isDraft),
-    mergeable: p.mergeable === "MERGEABLE" ? true : p.mergeable === "CONFLICTING" ? false : null,
-    checks: checksOf(p.statusCheckRollup),
-    updated: p.updatedAt ? Date.parse(p.updatedAt) || 0 : 0,
-  };
-}
-
-const REPO = /^[\w.-]+\/[\w.-]+$/;
-
-/** The open pull requests Claude made in `repo` (its branches start with "claude/"). */
-async function claudePulls(repo) {
-  if (!REPO.test(String(repo))) throw new Error("That isn't a repository (owner/name).");
-  const gh = findGh();
-  if (!gh) return [];
-  const out = await run(gh, [
-    "pr",
-    "list",
-    "--repo",
-    repo,
-    "--state",
-    "open",
-    "--limit",
-    "50",
-    "--json",
-    "number,title,headRefName,url,isDraft,mergeable,statusCheckRollup,updatedAt",
-  ]);
-  return JSON.parse(out || "[]")
-    .filter((p) => String(p.headRefName || "").startsWith("claude/"))
-    .map(normalizePull)
-    .sort((a, b) => b.updated - a.updated);
-}
-
-/** Merges a pull request (a draft is marked ready first) with a merge commit. */
-async function mergePull(repo, number, draft) {
-  if (!REPO.test(String(repo)) || !Number.isInteger(number)) {
-    throw new Error("That isn't a pull request.");
-  }
-  const gh = findGh();
-  if (!gh) throw new Error("The GitHub CLI isn't installed.");
-  try {
-    if (draft) await run(gh, ["pr", "ready", String(number), "--repo", repo]);
-    await run(gh, ["pr", "merge", String(number), "--repo", repo, "--merge"]);
-  } catch (err) {
-    throw new Error(
-      String(err.stderr || err.message)
-        .trim()
-        .split("\n")
-        .pop(),
-    );
-  }
-}
-
 module.exports = {
   listRepos,
   clone,
@@ -272,8 +193,4 @@ module.exports = {
   parseUser,
   findGh,
   downloadTarball,
-  claudePulls,
-  mergePull,
-  normalizePull,
-  checksOf,
 };

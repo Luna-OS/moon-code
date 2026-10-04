@@ -58,8 +58,6 @@ contextBridge.exposeInMainWorld("moonCode", {
   claudeCheckLimits: () => call("claude:checkLimits"),
   claudeUsage: () => call("claude:usage"),
 
-  cloudSend: (ref, message) => call("cloud:send", ref, message),
-
   skillsList: (project) => call("skills:list", project),
   skillsCreate: (opts) => call("skills:create", opts),
   skillsInstall: (repo) => call("skills:install", repo),
@@ -68,8 +66,6 @@ contextBridge.exposeInMainWorld("moonCode", {
   githubAccount: () => call("github:account"),
   githubRepos: () => call("github:repos"),
   githubClone: (cloneUrl, name) => call("github:clone", cloneUrl, name),
-  githubPulls: (repo) => call("github:pulls", repo),
-  githubMerge: (repo, number, draft) => call("github:merge", repo, number, draft),
 
   updateState: () => call("update:state"),
   updateCheck: () => call("update:check"),
