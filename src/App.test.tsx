@@ -148,7 +148,10 @@ describe("Moon Code", () => {
         "Add dark mode to the installer",
       ]);
     });
-    expect(await screen.findByText("Add dark mode to the installer")).toBeInTheDocument();
+    // In "Started from Moon Code", and (once the session's link is in) in the cloud tab's header.
+    expect((await screen.findAllByText("Add dark mode to the installer")).length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("Axo works while Claude works, and cheers when it is done", async () => {
