@@ -7,11 +7,24 @@ import type { MoonCodeBridge } from "./lib/types";
 
 // Monaco and xterm need a real browser; the tests use stand-ins with the same props.
 vi.mock("./workbench/CodeEditor", () => ({
-  default: ({ path, text }: { path: string; text: string }) => (
-    <textarea aria-label={`Editor ${path}`} defaultValue={text} />
+  default: ({
+    path,
+    text,
+    onChange,
+  }: {
+    path: string;
+    text: string;
+    onChange: (path: string, value: string) => void;
+  }) => (
+    <textarea
+      key={path}
+      aria-label={`Editor ${path}`}
+      defaultValue={text}
+      onChange={(e) => onChange(path, e.target.value)}
+    />
   ),
 }));
-vi.mock("./workbench/monaco-models", () => ({ disposeModel: () => {} }));
+vi.mock("./workbench/monaco-models", () => ({ disposeModel: () => {}, syncModel: () => {} }));
 vi.mock("./workbench/TerminalView", async () => {
   const { useEffect } = await import("react");
   return {
@@ -295,6 +308,80 @@ describe("Moon Code", () => {
     expect(screen.getAllByRole("tab", { name: /Cloud/ })).toHaveLength(1);
     expect(screen.getByRole("tab", { name: /Cloud/ })).toHaveAttribute("aria-selected", "true");
     expect(external).not.toHaveBeenCalled();
+  });
+
+  it("opens pictures, binaries and Markdown in their own views", async () => {
+    const bridge = new DemoBridge();
+    bridge.nextPicked = ["/home/luna/Pictures/moon.png", "/home/luna/tools/moon.bin"];
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await screen.findByRole("treeitem", { name: "README.md" });
+    // Ctrl+O: the system dialog, then a tab per file.
+    await user.keyboard("{Control>}o{/Control}");
+    expect(await screen.findByRole("tab", { name: /moon\.png/ })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: /moon\.bin/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(await screen.findByLabelText("Bytes")).toHaveTextContent("00000000 4d 6f 6f 6e 00");
+    await user.click(screen.getByRole("tab", { name: /moon\.png/ }));
+    expect(screen.getByRole("img", { name: "moon.png" })).toHaveAttribute(
+      "src",
+      "moon-file://local/%2Fhome%2Fluna%2FPictures%2Fmoon.png",
+    );
+    // Markdown: the page instead of the source, and back.
+    await user.click(screen.getByRole("treeitem", { name: "README.md" }));
+    await user.click(await screen.findByRole("button", { name: "Preview" }));
+    expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+  });
+
+  it("makes a new file, saves it where you say, and opens a closed one again", async () => {
+    const bridge = new DemoBridge();
+    bridge.nextSaveAs = "/home/luna/Moon-Zip/notes.txt";
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await screen.findByRole("treeitem", { name: "README.md" });
+    await user.keyboard("{Control>}n{/Control}");
+    const editor = await screen.findByLabelText("Editor Untitled-1");
+    await user.type(editor, "moonlight");
+    await user.keyboard("{Control>}s{/Control}");
+    expect(await screen.findByRole("tab", { name: /notes\.txt/ })).toBeInTheDocument();
+    expect(await bridge.readFile("/home/luna/Moon-Zip/notes.txt")).toBe("moonlight");
+    await user.click(screen.getByRole("button", { name: "Close notes.txt" }));
+    expect(screen.queryByRole("tab", { name: /notes\.txt/ })).not.toBeInTheDocument();
+    await user.keyboard("{Control>}{Shift>}t{/Shift}{/Control}");
+    expect(await screen.findByRole("tab", { name: /notes\.txt/ })).toBeInTheDocument();
+  });
+
+  it("follows a file Claude changes on disk", async () => {
+    const bridge = new DemoBridge();
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await user.click(await screen.findByRole("treeitem", { name: "README.md" }));
+    await screen.findByLabelText("Editor /home/luna/Moon-Zip/README.md");
+    // Untouched here: it simply takes the new text (no prompt).
+    bridge.touch("/home/luna/Moon-Zip/README.md", "# Moon-Zip\n\nNew from Claude.\n");
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() =>
+      expect(screen.queryByText(/changed on disk while you were editing/)).not.toBeInTheDocument(),
+    );
+    // Changed here and there: it asks.
+    await user.type(screen.getByLabelText("Editor /home/luna/Moon-Zip/README.md"), "mine");
+    bridge.touch("/home/luna/Moon-Zip/README.md", "# Moon-Zip\n\nClaude again.\n");
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(
+      await screen.findByText(/README\.md changed on disk while you were editing it/),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Take the new one" }));
+    await waitFor(() =>
+      expect(screen.queryByText(/changed on disk while you were editing/)).not.toBeInTheDocument(),
+    );
   });
 
   it("finds, downloads and installs an update from Settings", async () => {

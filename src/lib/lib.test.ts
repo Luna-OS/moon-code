@@ -5,6 +5,7 @@ import { kindColor, languageOf } from "./languages";
 import { basename, dirname, join, relative, resolveIn, tildify } from "./paths";
 import { fuzzyScore } from "./fuzzy";
 import { moonPage, pageScript } from "../workbench/cloud-page";
+import { bytes, fileUrl, fromBase64, hexRows, isMarkdown } from "./files";
 import { money, paceWarning, resetText, runsOutAt, SESSION_MS, WEEK_MS } from "./usage";
 
 describe("model names", () => {
@@ -289,5 +290,37 @@ describe("the cloud tab's Moon colours", () => {
     expect(script.startsWith("(")).toBe(true);
     expect(script).toContain('"theme":"dark"');
     expect(script).toContain('"test":false');
+  });
+});
+
+describe("files", () => {
+  it("shows bytes as a hex view", () => {
+    const rows = hexRows(new Uint8Array([0x4d, 0x6f, 0x6f, 0x6e, 0x00, 0x0a, 0x7e, 0xff]));
+    expect(rows).toEqual([
+      { offset: "00000000", hex: "4d 6f 6f 6e 00 0a 7e ff".padEnd(47, " "), text: "Moon..~." },
+    ]);
+    expect(hexRows(new Uint8Array(33))).toHaveLength(3);
+    expect(fromBase64("TW9vbg==")).toEqual(new Uint8Array([77, 111, 111, 110]));
+  });
+
+  it("names sizes and the viewer address", () => {
+    expect(bytes(512)).toBe("512 B");
+    expect(bytes(1536)).toBe("1.5 KB");
+    expect(bytes(6 * 1024 * 1024)).toBe("6.0 MB");
+    expect(fileUrl("C:\\Users\\Luna\\moon.png")).toBe(
+      "moon-file://local/C%3A%5CUsers%5CLuna%5Cmoon.png",
+    );
+    expect(isMarkdown("README.md")).toBe(true);
+    expect(isMarkdown("main.ts")).toBe(false);
+  });
+
+  it("knows Claude's orange (the mascot) from other colours", () => {
+    const { isOrange } = moonPage({ test: true }) as unknown as {
+      isOrange: (c: { r: number; g: number; b: number; a: number }) => boolean;
+    };
+    expect(isOrange({ r: 217, g: 119, b: 87, a: 1 })).toBe(true);
+    expect(isOrange({ r: 60, g: 180, b: 90, a: 1 })).toBe(false);
+    expect(isOrange({ r: 38, g: 38, b: 36, a: 1 })).toBe(false);
+    expect(isOrange({ r: 217, g: 119, b: 87, a: 0.1 })).toBe(false);
   });
 });

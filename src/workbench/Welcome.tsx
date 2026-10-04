@@ -1,4 +1,4 @@
-import { ClaudeIcon, FolderIcon, ProjectsIcon } from "../theme/icons";
+import { ClaudeIcon, FolderIcon, ProjectsIcon, FileIcon, NewFileIcon } from "../theme/icons";
 import { tildify, basename } from "../lib/paths";
 
 /** The start page when no file is open: open a folder, recent folders, the keys to know. */
@@ -7,6 +7,8 @@ export function Welcome({
   home,
   folder,
   onOpenFolder,
+  onOpenFile,
+  onNewFile,
   onOpenRecent,
   onProjects,
   onClaude,
@@ -15,11 +17,15 @@ export function Welcome({
   home: string | null;
   folder: string | null;
   onOpenFolder: () => void;
+  onOpenFile?: () => void;
+  onNewFile?: () => void;
   onOpenRecent: (path: string) => void;
   onProjects: () => void;
   onClaude: () => void;
 }) {
   const keys: [string, string][] = [
+    ["Open file", "Ctrl O"],
+    ["New file", "Ctrl N"],
     ["Go to file", "Ctrl P"],
     ["Commands", "Ctrl Shift P"],
     ["Claude", "Ctrl L"],
@@ -50,6 +56,22 @@ export function Welcome({
               </span>
               Open folder…
             </button>
+            {onOpenFile && (
+              <button type="button" className="mc-row" onClick={onOpenFile}>
+                <span style={{ color: "var(--mc-kind-file)" }}>
+                  <FileIcon size={15} />
+                </span>
+                Open file…
+              </button>
+            )}
+            {onNewFile && (
+              <button type="button" className="mc-row" onClick={onNewFile}>
+                <span style={{ color: "var(--mc-accent)" }}>
+                  <NewFileIcon size={15} />
+                </span>
+                New file
+              </button>
+            )}
             <button type="button" className="mc-row" onClick={onProjects}>
               <span style={{ color: "var(--mc-kind-image)" }}>
                 <ProjectsIcon size={15} />

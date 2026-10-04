@@ -2,7 +2,7 @@
 // The bridge between the UI and the main process. Its shape is the MoonCodeBridge type in
 // src/lib/types.ts. Every call resolves to an envelope { __envelope, ok, data | error, code }, and
 // src/lib/bridge.ts turns a failed one back into an Error with its code.
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 async function call(channel, ...args) {
   const res = await ipcRenderer.invoke(channel, ...args);
@@ -32,7 +32,20 @@ contextBridge.exposeInMainWorld("moonCode", {
   pickFolder: () => call("dialog:pickFolder"),
   folderOpened: (folder) => call("folder:opened", folder),
   readDir: (dir) => call("fs:readDir", dir),
-  readFile: (file) => call("fs:readFile", file),
+  readFile: (file, opts) => call("fs:readFile", file, opts),
+  fileInfo: (file) => call("fs:info", file),
+  readBytes: (file, max) => call("fs:readBytes", file, max),
+  statFiles: (files) => call("fs:stat", files),
+  pickFiles: () => call("dialog:openFiles"),
+  saveAsDialog: (suggested) => call("dialog:saveAs", suggested),
+  /** The path of a file dropped on the window (not a promise). */
+  pathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file) || null;
+    } catch {
+      return null;
+    }
+  },
   writeFile: (file, content) => call("fs:writeFile", file, content),
   createFile: (file) => call("fs:createFile", file),
   createFolder: (dir) => call("fs:createFolder", dir),

@@ -30,6 +30,9 @@ component from Microsoft – and your own Claude Code.
   everything else from the Claude app: Claude's language, help, upgrading, the apps, an API key.
 - **Skills**: see, make and install Claude Code skills (also straight from a GitHub repository)
   and call one in the chat with "Use".
+- **Opens every file**: code and text in the editor, pictures, PDFs, sound and video in viewers,
+  Markdown as a page, other binaries as a hex view. Open file, new file, save as, save all, auto
+  save, reopen a closed tab – and files Claude changes on disk update in their tabs by themselves.
 - **Pictures and files**: give Claude screenshots, PDFs or any file with the paperclip, by
   dropping them on the message box, or by pasting.
 - **Signs in to GitHub** through the GitHub CLI (`gh auth login` in a terminal tab, offered to be

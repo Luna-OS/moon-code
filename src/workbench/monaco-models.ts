@@ -18,3 +18,13 @@ export function disposeModel(path: string) {
   monaco.editor.getModel(uriOf(path))?.dispose();
   viewStates.delete(path);
 }
+
+/**
+ * Puts the text a file has on disk now into its model (a change from outside, by Claude for
+ * example), as one edit, so Ctrl+Z still brings the old text back.
+ */
+export function syncModel(path: string, text: string) {
+  const model = monaco.editor.getModel(uriOf(path));
+  if (!model || model.getValue() === text) return;
+  model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null);
+}

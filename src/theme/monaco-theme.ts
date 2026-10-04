@@ -80,8 +80,13 @@ function rules(p: Palette): Monaco.editor.ITokenThemeRule[] {
 
 function colors(p: Palette, dark: boolean): Monaco.editor.IColors {
   const a = (hex: string, alpha: string) => `${hex}${alpha}`;
+  // At night the editor is see-through, so the starry sky behind it shows (its frame gives it the
+  // editor's colour, a little transparent – see --mc-editor-glass).
+  const bg = dark ? "#00000000" : p.bg;
   return {
-    "editor.background": p.bg,
+    "editor.background": bg,
+    "editorStickyScroll.background": p.bg,
+    "editorStickyScrollHover.background": p.surface,
     "editor.foreground": p.text,
     "editorLineNumber.foreground": p.faint,
     "editorLineNumber.activeForeground": p.lavenderSoft,
@@ -99,7 +104,7 @@ function colors(p: Palette, dark: boolean): Monaco.editor.IColors {
     "editorIndentGuide.background1": a(p.lavender, "14"),
     "editorIndentGuide.activeBackground1": a(p.lavender, "40"),
     "editorWhitespace.foreground": a(p.lavender, "26"),
-    "editorGutter.background": p.bg,
+    "editorGutter.background": bg,
     "editorWidget.background": p.surface,
     "editorWidget.border": a(p.lavender, "40"),
     "editorSuggestWidget.background": p.surface,
@@ -116,9 +121,11 @@ function colors(p: Palette, dark: boolean): Monaco.editor.IColors {
     "scrollbarSlider.background": a(p.lavender, "26"),
     "scrollbarSlider.hoverBackground": a(p.lavender, "40"),
     "scrollbarSlider.activeBackground": a(p.lavender, "59"),
-    "minimap.background": p.bg,
+    "minimap.background": bg,
     "minimapSlider.background": a(p.lavender, "1a"),
     "editorOverviewRuler.border": "#00000000",
+    "editorOverviewRuler.background": bg,
+    "scrollbar.shadow": "#00000000",
     "editorBracketHighlight.foreground1": p.lavender,
     "editorBracketHighlight.foreground2": p.sky,
     "editorBracketHighlight.foreground3": p.mint,

@@ -5,8 +5,11 @@ import { useDocumentTheme } from "./theme/useTheme";
 import { defaultBridge } from "./lib/bridge";
 import { languageName, languageOf, kindColor } from "./lib/languages";
 import { basename, relative, resolveIn } from "./lib/paths";
+import { bytes, isMarkdown } from "./lib/files";
 import type {
   ClaudeAccount,
+  CodedError,
+  FileKind,
   GitHubAccount,
   MoonCodeBridge,
   PlanUsage,
@@ -25,6 +28,7 @@ import { Welcome } from "./workbench/Welcome";
 import { SettingsDialog } from "./workbench/SettingsDialog";
 import { SkillsView } from "./workbench/SkillsView";
 import { CloudWeb } from "./workbench/CloudWeb";
+import { FileViewer, MarkdownView } from "./workbench/FileViewer";
 import { UsageView } from "./workbench/UsageView";
 import { AccountMenu } from "./workbench/AccountMenu";
 import { CLAUDE_CODE_WEB, isClaudeCodeUrl } from "./lib/cloud";
@@ -40,7 +44,22 @@ interface Tab {
   /** The text in the editor. */
   value: string;
   language: string;
+  /** Text goes to the editor; pictures, PDFs, media and binaries to a viewer. */
+  kind: FileKind;
+  size: number;
+  /** When the file on disk last changed (ms), to notice changes from outside (Claude…). */
+  mtime: number | null;
+  /** A new file that has no place on disk yet ("Untitled-1"). */
+  untitled?: boolean;
+  /** Markdown shown as a page instead of its source. */
+  preview?: boolean;
+  /** The file changed on disk while it had unsaved changes here. */
+  changedOnDisk?: boolean;
 }
+
+/** Tabs that were closed, newest last (Ctrl+Shift+T opens them again). */
+const closedTabs: string[] = [];
+let untitledSeq = 0;
 
 interface TerminalTab {
   id: string;
@@ -277,12 +296,33 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
         return;
       }
       try {
-        const text = await bridge.readFile(path);
-        setTabs((ts) =>
-          ts.some((t) => t.path === path)
-            ? ts
-            : [...ts, { path, saved: text, value: text, language: languageOf(path) }],
-        );
+        const info = await bridge.fileInfo(path);
+        let text = "";
+        if (info.kind === "text") {
+          try {
+            text = await bridge.readFile(path);
+          } catch (e) {
+            if ((e as CodedError).code !== "ETOOLARGE") throw e;
+            if (
+              !window.confirm(
+                `${basename(path)} is ${bytes(info.size)}. Large files make the editor slow. Open it anyway?`,
+              )
+            ) {
+              return;
+            }
+            text = await bridge.readFile(path, { force: true });
+          }
+        }
+        const tab: Tab = {
+          path,
+          saved: text,
+          value: text,
+          language: languageOf(path),
+          kind: info.kind,
+          size: info.size,
+          mtime: info.mtime,
+        };
+        setTabs((ts) => (ts.some((t) => t.path === path) ? ts : [...ts, tab]));
         setActive(path);
       } catch (e) {
         notify((e as Error).message);
@@ -303,6 +343,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       }
       const i = tabs.findIndex((t) => t.path === path);
       const rest = tabs.filter((t) => t.path !== path);
+      if (tab && !tab.untitled) closedTabs.push(path);
       setTabs(rest);
       if (active === path) setActive(rest.length ? rest[Math.min(i, rest.length - 1)].path : null);
       void import("./workbench/monaco-models").then((m) => m.disposeModel(path));
@@ -310,16 +351,195 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
     [tabs, active],
   );
 
-  const save = useCallback(async () => {
+  /** Writes a tab to `target` (its own path, or a new one from "Save as…"). */
+  const writeTab = useCallback(
+    async (tab: Tab, target: string) => {
+      await bridge.writeFile(target, tab.value);
+      const mtime = (await bridge.statFiles([target]))[target] ?? null;
+      if (target === tab.path) {
+        setTabs((ts) =>
+          ts.map((t) =>
+            t.path === tab.path ? { ...t, saved: tab.value, mtime, changedOnDisk: false } : t,
+          ),
+        );
+        return;
+      }
+      // Saved somewhere else: the tab becomes that file (a fresh model under the new name).
+      const mod = await import("./workbench/monaco-models");
+      mod.disposeModel(tab.path);
+      setTabs((ts) =>
+        ts.map((t) =>
+          t.path === tab.path
+            ? {
+                ...t,
+                path: target,
+                saved: tab.value,
+                language: languageOf(target),
+                untitled: false,
+                mtime,
+                changedOnDisk: false,
+              }
+            : t,
+        ),
+      );
+      setActive((a) => (a === tab.path ? target : a));
+    },
+    [bridge],
+  );
+
+  const saveAs = useCallback(async () => {
     const tab = tabs.find((t) => t.path === active);
-    if (!tab) return;
+    if (!tab || tab.kind !== "text") return;
+    const suggested = tab.untitled
+      ? folder
+        ? resolveIn(folder, basename(tab.path))
+        : basename(tab.path)
+      : tab.path;
+    const target = await bridge.saveAsDialog(suggested);
+    if (!target) return;
     try {
-      await bridge.writeFile(tab.path, tab.value);
-      setTabs((ts) => ts.map((t) => (t.path === tab.path ? { ...t, saved: tab.value } : t)));
+      await writeTab(tab, target);
     } catch (e) {
       notify((e as Error).message);
     }
-  }, [bridge, tabs, active, notify]);
+  }, [bridge, tabs, active, folder, writeTab, notify]);
+
+  const save = useCallback(async () => {
+    const tab = tabs.find((t) => t.path === active);
+    if (!tab || tab.kind !== "text") return;
+    if (tab.untitled) return saveAs();
+    try {
+      await writeTab(tab, tab.path);
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  }, [tabs, active, saveAs, writeTab, notify]);
+
+  /** Saves every changed file that has a place on disk. */
+  const saveAll = useCallback(async () => {
+    for (const tab of tabs) {
+      if (tab.kind !== "text" || tab.untitled || tab.value === tab.saved) continue;
+      try {
+        await writeTab(tab, tab.path);
+      } catch (e) {
+        notify((e as Error).message);
+      }
+    }
+  }, [tabs, writeTab, notify]);
+
+  /** A new, empty file (saved somewhere with the first Ctrl+S). */
+  const newFile = useCallback(() => {
+    const path = `Untitled-${++untitledSeq}`;
+    setTabs((ts) => [
+      ...ts,
+      {
+        path,
+        saved: "",
+        value: "",
+        language: "plaintext",
+        kind: "text",
+        size: 0,
+        mtime: null,
+        untitled: true,
+      },
+    ]);
+    setActive(path);
+    setFront("file");
+  }, []);
+
+  const openFilesDialog = useCallback(async () => {
+    for (const p of await bridge.pickFiles()) await openFile(p);
+  }, [bridge, openFile]);
+
+  const reopenClosed = useCallback(() => {
+    const p = closedTabs.pop();
+    if (p) void openFile(p);
+  }, [openFile]);
+
+  /** Opens what was dropped on the window: files in tabs, a folder as the open folder. */
+  const openDropped = useCallback(
+    async (files: FileList) => {
+      for (const f of Array.from(files)) {
+        const p = bridge.pathForFile(f);
+        if (!p) continue;
+        try {
+          const info = await bridge.fileInfo(p);
+          if (info) await openFile(p);
+        } catch (e) {
+          if ((e as CodedError).code === "EISDIR") await openFolder(p);
+          else notify((e as Error).message);
+        }
+      }
+    },
+    [bridge, openFile, openFolder, notify],
+  );
+
+  const setTabFlags = useCallback((path: string, patch: Partial<Tab>) => {
+    setTabs((ts) => ts.map((t) => (t.path === path ? { ...t, ...patch } : t)));
+  }, []);
+
+  /** Takes the file as it is on disk now (after a change from outside). */
+  const reloadFromDisk = useCallback(
+    async (path: string) => {
+      try {
+        const text = await bridge.readFile(path, { force: true });
+        const mtime = (await bridge.statFiles([path]))[path] ?? null;
+        const mod = await import("./workbench/monaco-models");
+        mod.syncModel(path, text);
+        setTabFlags(path, { saved: text, value: text, mtime, changedOnDisk: false });
+      } catch (e) {
+        notify((e as Error).message);
+      }
+    },
+    [bridge, setTabFlags, notify],
+  );
+
+  // Files that change on disk while they are open (Claude edits them, git checks out…): a tab
+  // without unsaved changes takes the new text, one with changes asks. Looked at every 2 s and when
+  // Moon Code comes back to the front.
+  const onDisk = useRef<Tab[]>([]);
+  useEffect(() => {
+    onDisk.current = tabs;
+  });
+  useEffect(() => {
+    let busy = false;
+    const check = async () => {
+      const open = onDisk.current.filter((t) => !t.untitled && t.mtime !== null);
+      if (busy || !open.length) return;
+      busy = true;
+      try {
+        const times = await bridge.statFiles(open.map((t) => t.path));
+        for (const t of open) {
+          const now = times[t.path];
+          if (now == null || now === t.mtime) continue;
+          if (t.kind !== "text") setTabFlags(t.path, { mtime: now });
+          else if (t.value === t.saved) await reloadFromDisk(t.path);
+          else if (!t.changedOnDisk) setTabFlags(t.path, { changedOnDisk: true, mtime: now });
+        }
+      } catch {
+        // the bridge is gone (closing)
+      } finally {
+        busy = false;
+      }
+    };
+    const t = setInterval(() => void check(), 2000);
+    const onFocus = () => void check();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [bridge, reloadFromDisk, setTabFlags]);
+
+  // Auto save: a second after the last change, every changed file with a place on disk.
+  const autoSave = Boolean(settings?.autoSave);
+  const anyDirty = tabs.some((t) => t.kind === "text" && !t.untitled && t.value !== t.saved);
+  const editsKey = tabs.map((t) => t.value.length).join(",");
+  useEffect(() => {
+    if (!autoSave || !anyDirty) return;
+    const t = setTimeout(() => void saveAll(), 1000);
+    return () => clearTimeout(t);
+  }, [autoSave, anyDirty, editsKey, saveAll]);
 
   const onEdit = useCallback((path: string, value: string) => {
     setTabs((ts) => ts.map((t) => (t.path === path ? { ...t, value } : t)));
@@ -558,8 +778,28 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
 
   const commands: Command[] = useMemo(
     () => [
-      { id: "open-folder", label: "Open folder…", run: () => void pickFolder() },
+      { id: "open-file", label: "Open file…", keys: "Ctrl+O", run: () => void openFilesDialog() },
+      {
+        id: "open-folder",
+        label: "Open folder…",
+        keys: "Ctrl+Alt+O",
+        run: () => void pickFolder(),
+      },
+      { id: "new-file", label: "New file", keys: "Ctrl+N", run: newFile },
       { id: "save", label: "Save", keys: "Ctrl+S", run: () => void save() },
+      { id: "save-as", label: "Save as…", keys: "Ctrl+Shift+S", run: () => void saveAs() },
+      { id: "save-all", label: "Save all", keys: "Ctrl+Alt+S", run: () => void saveAll() },
+      {
+        id: "reopen",
+        label: "Reopen closed editor",
+        keys: "Ctrl+Shift+T",
+        run: reopenClosed,
+      },
+      {
+        id: "auto-save",
+        label: settings?.autoSave ? "Turn auto save off" : "Turn auto save on",
+        run: () => updateSettings({ autoSave: !settings?.autoSave }),
+      },
       {
         id: "close-tab",
         label: "Close editor",
@@ -619,6 +859,12 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
     ],
     [
       pickFolder,
+      openFilesDialog,
+      newFile,
+      saveAs,
+      saveAll,
+      reopenClosed,
+      settings?.autoSave,
       save,
       active,
       closeTab,
@@ -643,7 +889,12 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       if (!mod) return;
       const k = e.key.toLowerCase();
       let handled = true;
-      if (k === "s" && !e.shiftKey) void save();
+      if (k === "s" && e.altKey) void saveAll();
+      else if (k === "s" && e.shiftKey) void saveAs();
+      else if (k === "s") void save();
+      else if (k === "n" && !e.shiftKey) newFile();
+      else if (k === "t" && e.shiftKey) reopenClosed();
+      else if (k === "o" && e.altKey) void pickFolder();
       else if (k === "p" && e.shiftKey) openQuick(">");
       else if (k === "p") openQuick("");
       else if (k === "b" && !e.shiftKey) setView((v) => (v ? null : "explorer"));
@@ -657,7 +908,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       else if (k === "w" && front === "usage" && usageOpen) closeUsage();
       else if (k === "w" && active) closeTab(active);
       else if (k === ",") setShowSettings(true);
-      else if (k === "o" && !e.shiftKey) void pickFolder();
+      else if (k === "o" && !e.shiftKey) void openFilesDialog();
       else handled = false;
       if (handled) e.preventDefault();
     };
@@ -665,6 +916,11 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [
     save,
+    saveAs,
+    saveAll,
+    newFile,
+    reopenClosed,
+    openFilesDialog,
     openQuick,
     newTerminal,
     togglePanel,
@@ -702,7 +958,18 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
   }
 
   return (
-    <div className="relative flex h-full flex-col">
+    <div
+      className="relative flex h-full flex-col"
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        // Files dropped on the message box go to Claude (it handles them first).
+        if (!e.dataTransfer.files.length || e.defaultPrevented) return;
+        e.preventDefault();
+        void openDropped(e.dataTransfer.files);
+      }}
+    >
       <Sky />
       <TitleBar
         folderName={folder ? basename(folder) : null}
@@ -924,9 +1191,52 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
               )}
             </div>
           )}
+          {activeTab &&
+            (activeTab.changedOnDisk ||
+              (activeTab.kind === "text" && isMarkdown(activeTab.path))) && (
+              <div className="mc-editor-bar flex h-8 shrink-0 items-center gap-2 px-3 text-[0.75rem]">
+                {activeTab.changedOnDisk ? (
+                  <>
+                    <span
+                      role="alert"
+                      className="min-w-0 flex-1 truncate"
+                      style={{ color: "var(--mc-warning)" }}
+                    >
+                      {basename(activeTab.path)} changed on disk while you were editing it.
+                    </span>
+                    <button
+                      type="button"
+                      className="mc-btn mc-btn-sm"
+                      onClick={() => void reloadFromDisk(activeTab.path)}
+                    >
+                      Take the new one
+                    </button>
+                    <button
+                      type="button"
+                      className="mc-btn mc-btn-ghost mc-btn-sm"
+                      onClick={() => setTabFlags(activeTab.path, { changedOnDisk: false })}
+                    >
+                      Keep mine
+                    </button>
+                  </>
+                ) : (
+                  <span className="flex-1" />
+                )}
+                {activeTab.kind === "text" && isMarkdown(activeTab.path) && (
+                  <button
+                    type="button"
+                    className="mc-btn mc-btn-ghost mc-btn-sm"
+                    aria-pressed={Boolean(activeTab.preview)}
+                    onClick={() => setTabFlags(activeTab.path, { preview: !activeTab.preview })}
+                  >
+                    {activeTab.preview ? "Edit" : "Preview"}
+                  </button>
+                )}
+              </div>
+            )}
           <div
             className="relative min-h-0 flex-1"
-            style={{ background: activeTab ? "var(--mc-editor)" : undefined }}
+            style={{ background: activeTab ? "var(--mc-editor-glass)" : undefined }}
           >
             {usageOpen && (
               <UsageView
@@ -949,7 +1259,17 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                 onOpenExternal={(url) => void bridge.openExternal(url)}
               />
             )}
-            {activeTab ? (
+            {activeTab && activeTab.kind !== "text" ? (
+              <FileViewer
+                key={activeTab.path}
+                bridge={bridge}
+                path={activeTab.path}
+                kind={activeTab.kind}
+                size={activeTab.size}
+              />
+            ) : activeTab?.preview ? (
+              <MarkdownView text={activeTab.value} onLink={openLink} />
+            ) : activeTab ? (
               <Suspense fallback={null}>
                 <CodeEditor
                   path={activeTab.path}
@@ -971,6 +1291,8 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                 home={sys?.home ?? null}
                 folder={folder}
                 onOpenFolder={() => void pickFolder()}
+                onOpenFile={() => void openFilesDialog()}
+                onNewFile={newFile}
                 onOpenRecent={(p) => void openFolder(p)}
                 onProjects={() => setView("projects")}
                 onClaude={() => setClaudeOpen(true)}
@@ -1101,8 +1423,8 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       </div>
       <StatusBar
         branch={branch}
-        cursor={shownTab ? cursor : null}
-        language={shownTab ? languageName(shownTab.language) : null}
+        cursor={shownTab?.kind === "text" ? cursor : null}
+        language={shownTab?.kind === "text" ? languageName(shownTab.language) : null}
         model={claudeInfo?.model ?? settings.claudeModel}
         limits={account?.loggedIn ? limits : null}
         context={

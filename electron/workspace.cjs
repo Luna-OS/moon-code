@@ -22,6 +22,16 @@ const SKIP_DIRS = new Set([
 ]);
 const MAX_FILES = 20_000;
 const MAX_READ = 5 * 1024 * 1024;
+/** The largest text file opened at all (after asking, past MAX_READ). */
+const MAX_FORCED_READ = 64 * 1024 * 1024;
+
+/** Files the editor shows with a viewer instead of as text, by extension. */
+const VIEWERS = {
+  image: ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "ico", "svg"],
+  pdf: ["pdf"],
+  audio: ["mp3", "wav", "ogg", "oga", "flac", "m4a", "aac", "opus"],
+  video: ["mp4", "webm", "ogv", "mov", "m4v", "mkv"],
+};
 const MAX_SEARCH_FILE = 1024 * 1024;
 
 /** The entries of one folder, folders first, then by name. */
@@ -57,11 +67,70 @@ function looksBinary(buf) {
   return false;
 }
 
-/** A text file's content; binary and very large files are refused with a coded error. */
-async function readFile(file) {
+/**
+ * How the editor opens a file: { kind: "text" | "image" | "pdf" | "audio" | "video" | "binary",
+ * size, mtime }. Pictures, PDFs and media by their extension, binaries by a NUL byte early on.
+ */
+async function fileInfo(file) {
   const st = await fsp.stat(file);
-  if (st.size > MAX_READ) {
-    const err = new Error("This file is too large to open in the editor.");
+  if (st.isDirectory()) {
+    const err = new Error(`${path.basename(file)} is a folder.`);
+    err.code = "EISDIR";
+    throw err;
+  }
+  const ext = path.extname(file).slice(1).toLowerCase();
+  let kind = Object.keys(VIEWERS).find((k) => VIEWERS[k].includes(ext)) || null;
+  if (!kind) {
+    const fh = await fsp.open(file, "r");
+    try {
+      const buf = Buffer.alloc(Math.min(8000, st.size));
+      await fh.read(buf, 0, buf.length, 0);
+      kind = looksBinary(buf) ? "binary" : "text";
+    } finally {
+      await fh.close();
+    }
+  }
+  return { kind, size: st.size, mtime: st.mtimeMs };
+}
+
+/** The first `max` bytes of a file, base64 (for the hex view of a binary file). */
+async function readBytes(file, max = 64 * 1024) {
+  const fh = await fsp.open(file, "r");
+  try {
+    const st = await fh.stat();
+    const buf = Buffer.alloc(Math.min(max, st.size));
+    await fh.read(buf, 0, buf.length, 0);
+    return { data: buf.toString("base64"), size: st.size };
+  } finally {
+    await fh.close();
+  }
+}
+
+/** The modification times (ms) of files, null for one that is gone: open tabs follow changes. */
+async function statFiles(files) {
+  const out = {};
+  await Promise.all(
+    (files || []).map(async (f) => {
+      try {
+        out[f] = (await fsp.stat(f)).mtimeMs;
+      } catch {
+        out[f] = null;
+      }
+    }),
+  );
+  return out;
+}
+
+/**
+ * A text file's content; binary and very large files are refused with a coded error. With
+ * `force`, a large one (up to 64 MB) is read anyway.
+ */
+async function readFile(file, { force = false } = {}) {
+  const st = await fsp.stat(file);
+  if (st.size > (force ? MAX_FORCED_READ : MAX_READ)) {
+    const err = new Error(
+      force ? "This file is too large to open as text." : "This file is large. Open it anyway?",
+    );
     err.code = "ETOOLARGE";
     throw err;
   }
@@ -210,6 +279,10 @@ function gitHubRepo(root) {
 }
 
 module.exports = {
+  fileInfo,
+  readBytes,
+  statFiles,
+  VIEWERS,
   parseGitHubRemote,
   gitHubRepo,
   readDir,

@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
-import { AXOLOTL_COLORS, type AxoMood } from "./axo";
+import type { AxoMood } from "./axo";
 import { AXOLOTL_FRAMES } from "./frames";
+import { AXO_HEIGHT, AXO_WIDTH, toRects, type Rect } from "./pixels";
 
 /*
  * Axo, Moon Code's mascot: a white (leucistic) axolotl in pixels. It sleeps while nobody is
@@ -8,28 +9,8 @@ import { AXOLOTL_FRAMES } from "./frames";
  * and cheers when Claude is done. Frames come from scripts/axolotl-frames.py.
  */
 
-const WIDTH = 26;
-const HEIGHT = 20;
-
-type Frame = readonly string[];
-type Rect = { x: number; y: number; w: number; fill: string };
-
-/** One rect per run of same-coloured pixels in a row. */
-function toRects(frame: Frame): Rect[] {
-  const rects: Rect[] = [];
-  frame.forEach((row, y) => {
-    let x = 0;
-    while (x < row.length) {
-      const ch = row[x];
-      let end = x + 1;
-      while (end < row.length && row[end] === ch) end++;
-      const fill = AXOLOTL_COLORS[ch];
-      if (fill) rects.push({ x, y, w: end - x, fill });
-      x = end;
-    }
-  });
-  return rects;
-}
+const WIDTH = AXO_WIDTH;
+const HEIGHT = AXO_HEIGHT;
 
 const RECTS = Object.fromEntries(
   Object.entries(AXOLOTL_FRAMES).map(([mood, frames]) => [mood, frames.map(toRects)]),
