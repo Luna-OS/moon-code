@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { TITLE_BAR_HEIGHT } from "../theme/frame-colors";
 import {
+  SkillsIcon,
   AccountIcon,
   BranchIcon,
   ClaudeIcon,
@@ -61,7 +62,7 @@ export function TitleBar({
   );
 }
 
-export type SideView = "explorer" | "search" | "projects" | "cloud";
+export type SideView = "explorer" | "search" | "projects" | "cloud" | "skills";
 
 /** The column of view buttons on the far left (the activity bar, in Moon colours). */
 export function ActivityBar({
@@ -71,6 +72,7 @@ export function ActivityBar({
   onView,
   onClaude,
   onAccount,
+  accountOpen = false,
   onSettings,
   updateReady = false,
 }: {
@@ -80,6 +82,8 @@ export function ActivityBar({
   onView: (v: SideView) => void;
   onClaude: () => void;
   onAccount: () => void;
+  /** The account menu is open. */
+  accountOpen?: boolean;
   onSettings: () => void;
   /** A new Moon Code is out: a dot on the settings button. */
   updateReady?: boolean;
@@ -102,6 +106,7 @@ export function ActivityBar({
       {item("search", "Search", <SearchIcon />, "Ctrl+Shift+F")}
       {item("projects", "Projects", <ProjectsIcon />, "Ctrl+Shift+O")}
       {item("cloud", "Cloud", <CloudIcon size={22} />, "Claude Code on the web")}
+      {item("skills", "Skills", <SkillsIcon />, "what Claude can do on top")}
       <button
         type="button"
         className="mc-activity"
@@ -119,7 +124,10 @@ export function ActivityBar({
         type="button"
         className="mc-activity"
         aria-label="Claude account"
-        title="Claude account"
+        aria-haspopup="menu"
+        aria-expanded={accountOpen}
+        title="Claude account, usage and help"
+        onMouseDown={(e) => accountOpen && e.stopPropagation()}
         onClick={onAccount}
       >
         <AccountIcon />

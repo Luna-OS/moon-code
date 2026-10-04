@@ -116,6 +116,14 @@ export const ReloadIcon = ({ size }: P) => (
   </Svg>
 );
 
+/** Skills: an open book with a small star. */
+export const SkillsIcon = ({ size = 22 }: P) => (
+  <Svg size={size} stroke={size >= 20 ? 1.75 : 2}>
+    <path d="M12 7v13M12 7c-1.6-1.4-4-2-8-2v13c4 0 6.4.6 8 2 1.6-1.4 4-2 8-2V5c-1.2 0-2.3.05-3.3.17" />
+    <path d="m17.5 2 .6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6Z" />
+  </Svg>
+);
+
 export const BackIcon = ({ size = 15 }: P) => (
   <Svg size={size}>
     <path d="M19 12H5M11 18l-6-6 6-6" />

@@ -27,3 +27,6 @@ Split editors,editor,should,yes,no,
 Debugger,debug,could,yes,no,
 Extensions marketplace,extensions,could,yes,skip,their extension network is not part of the product to rebuild
 Settings sync across machines,settings,could,yes,no,
+Plan usage tab with live updates and pace warning,ai,should,yes,yes,claude -p /usage (no cost) every 30 s while open
+Account menu with language help upgrade and API key,ai,should,yes,yes,claude.ai pages open in the web tab
+Skills view: list create install from GitHub and use,ai,should,yes,yes,~/.claude/skills and .claude/skills

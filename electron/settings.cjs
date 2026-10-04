@@ -20,6 +20,8 @@ const DEFAULTS = {
   claudeModel: null,
   claudePermissionMode: "acceptEdits",
   claudeEffort: null,
+  /** The language Claude answers in (null: the user's own). */
+  claudeLanguage: null,
   /** The last known plan limits, so they show before the first message. */
   lastRateLimit: null,
   /** The cloud tasks started from Moon Code, newest first. */

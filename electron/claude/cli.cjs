@@ -46,6 +46,13 @@ function chatArgs(opts = {}) {
     args.push("--permission-mode", opts.permissionMode);
   }
   if (opts.resume) args.push("--resume", String(opts.resume));
+  const language = typeof opts.language === "string" ? opts.language.trim().slice(0, 40) : "";
+  if (language) {
+    args.push(
+      "--append-system-prompt",
+      `Always answer the user in ${language}, whatever language the code or the files are in.`,
+    );
+  }
   const tools = (opts.allowedTools || []).filter(Boolean);
   if (tools.length) args.push("--allowedTools", tools.join(","));
   return args;

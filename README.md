@@ -29,6 +29,11 @@ component from Microsoft – and your own Claude Code.
   (claude.ai/code next to your files) – not in a browser or the Claude app. Send it follow-ups,
   bring it back here (`--teleport`), start **Remote Control** to steer Claude from your phone, or
   run an **Ultrareview** of the branch.
+- **Usage, live**: a Usage tab like the Claude app's – session, week, per model, extra usage and
+  a warning when your pace runs out before a reset – that updates by itself. The account menu has
+  everything else from the Claude app: Claude's language, help, upgrading, the apps, an API key.
+- **Skills**: see, make and install Claude Code skills (also straight from a GitHub repository)
+  and call one in the chat with "Use".
 - **Signs in to GitHub** through the GitHub CLI (`gh auth login` in a terminal tab, offered to be
   installed if it's missing): your avatar and account in Projects and Cloud, your private
   repositories in Projects.

@@ -4,6 +4,7 @@ import { percent, timeAgo, timeUntil, tokens } from "./format";
 import { kindColor, languageOf } from "./languages";
 import { basename, dirname, join, relative, resolveIn, tildify } from "./paths";
 import { fuzzyScore } from "./fuzzy";
+import { money, paceWarning, resetText, runsOutAt, SESSION_MS, WEEK_MS } from "./usage";
 
 describe("model names", () => {
   it("reads the ids Claude Code reports", () => {
@@ -177,5 +178,46 @@ describe("display", () => {
       fuzzyScore("app", "src/lib/wrapper.ts"),
     );
     expect(fuzzyScore("xyz", "src/App.tsx")).toBe(-1);
+  });
+});
+
+describe("usage", () => {
+  const H = 3_600_000;
+  // A Monday morning (local time), so the weekday names are known.
+  const now = new Date(2026, 9, 5, 8, 0).getTime();
+
+  it("warns when the week runs out before its reset", () => {
+    // 79 % used after 3.5 of 7 days: the rest lasts about another 0.9 days.
+    const week = { utilization: 0.79, resetsAt: now + 3.5 * 24 * H };
+    const at = runsOutAt(week, WEEK_MS, now);
+    expect(at).not.toBeNull();
+    expect(at! - now).toBeGreaterThan(0.9 * 24 * H);
+    expect(at! - now).toBeLessThan(1 * 24 * H);
+    expect(paceWarning(null, week, now)).toMatch(
+      /^Heads up: at this pace you'll run out tomorrow at \d\d:\d\d, before the weekly reset on Thursday at 20:00\.$/,
+    );
+  });
+
+  it("stays quiet when the pace lasts, or when it is too early to tell", () => {
+    expect(runsOutAt({ utilization: 0.3, resetsAt: now + 3.5 * 24 * H }, WEEK_MS, now)).toBeNull();
+    expect(runsOutAt({ utilization: 0.04, resetsAt: now + 4.9 * H }, SESSION_MS, now)).toBeNull();
+    expect(paceWarning({ utilization: 0.2, resetsAt: now + 2 * H }, null, now)).toBeNull();
+  });
+
+  it("says when a limit is reached, and when the session runs out", () => {
+    expect(paceWarning(null, { utilization: 1, resetsAt: now + 2 * 24 * H }, now)).toBe(
+      "You've used this week's limit. It resets on Wednesday at 08:00.",
+    );
+    // 60 % after 1 of 5 hours: out in 40 minutes.
+    expect(paceWarning({ utilization: 0.6, resetsAt: now + 4 * H }, null, now)).toBe(
+      "Heads up: at this pace this session runs out at 08:40, before it resets at 12:00.",
+    );
+  });
+
+  it("formats resets and money", () => {
+    expect(resetText(now + 1.5 * H, now)).toBe("Resets at 09:30");
+    expect(resetText(now + 4 * 24 * H, now)).toBe("Resets Friday, 08:00");
+    expect(money(4000, "EUR")).toBe("€40.00");
+    expect(money(1234, "USD")).toBe("US$12.34");
   });
 });

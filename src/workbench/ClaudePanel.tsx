@@ -4,6 +4,7 @@ import {
   CheckIcon,
   ClaudeIcon,
   CloseIcon,
+  HistoryIcon,
   LogoutIcon,
   PlusIcon,
   ReloadIcon,
@@ -32,6 +33,7 @@ import { dollars, percent, timeAgo, timeUntil, tokens } from "../lib/format";
 import { basename, relative } from "../lib/paths";
 import type {
   ClaudeAccount,
+  ClaudeSession,
   Effort,
   MoonCodeBridge,
   PermissionMode,
@@ -78,6 +80,8 @@ export function ClaudePanel({
   onRefreshAccount,
   onClose,
   onOpenFile,
+  home = null,
+  onResume,
 }: {
   bridge: MoonCodeBridge;
   account: ClaudeAccount | null;
@@ -93,6 +97,10 @@ export function ClaudePanel({
   onInfo: (info: ClaudeInfo) => void;
   onSignIn: () => void;
   onInstall: () => void;
+  /** Where Claude works without an open folder (its earlier conversations are listed there). */
+  home?: string | null;
+  /** Continues an earlier conversation (from the History list). */
+  onResume?: (session: ClaudeSession) => void;
   onRefreshAccount: () => void;
   onClose: () => void;
   onOpenFile: (path: string) => void;
@@ -110,6 +118,7 @@ export function ClaudePanel({
   const model = settings.claudeModel;
   const mode = settings.claudePermissionMode;
   const effort = settings.claudeEffort;
+  const language = settings.claudeLanguage ?? null;
 
   // Axo cheers for a moment after each turn Claude finished well.
   const [cheered, setCheered] = useState(0);
@@ -177,6 +186,59 @@ export function ClaudePanel({
     setChatId(newChatId());
   }, []);
 
+  /** "+": a fresh conversation, ready to type into; the last one stays under History. */
+  const [fresh, setFresh] = useState<"empty" | "kept" | null>(null);
+  const startNewChat = () => {
+    setFresh(chat.items.length > 0 ? "kept" : "empty");
+    newChat();
+    setDraft("");
+    setHistoryOpen(false);
+    setTimeout(() => input.current?.focus(), 0);
+  };
+  // The note under the welcome goes after a few seconds.
+  useEffect(() => {
+    if (!fresh) return;
+    const t = setTimeout(() => setFresh(null), 6000);
+    return () => clearTimeout(t);
+  }, [fresh]);
+
+  /** History: this folder's earlier conversations with Claude Code, newest first. */
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<ClaudeSession[] | null>(null);
+  const historyBox = useRef<HTMLDivElement>(null);
+  const where = folder ?? home;
+  const toggleHistory = () => {
+    if (historyOpen) {
+      setHistoryOpen(false);
+      return;
+    }
+    setHistoryOpen(true);
+    setHistory(null);
+    if (!where) {
+      setHistory([]);
+      return;
+    }
+    bridge
+      .claudeSessions(where)
+      .then((list) => setHistory(list.slice(0, 20)))
+      .catch(() => setHistory([]));
+  };
+  useEffect(() => {
+    if (!historyOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (historyBox.current && !historyBox.current.contains(e.target as Node)) {
+        setHistoryOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setHistoryOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [historyOpen]);
+
   // A conversation belongs to its folder: another folder starts a new one.
   const [chatFolder, setChatFolder] = useState(folder);
   if (folder !== chatFolder) {
@@ -186,7 +248,7 @@ export function ClaudePanel({
 
   /** What a process was started with; another value means it has to be started again. */
   const runKey = (id: string, tools: string[]) =>
-    JSON.stringify([id, folder, model, mode, effort, tools]);
+    JSON.stringify([id, folder, model, mode, effort, language, tools]);
 
   // Continue a conversation picked in Projects: a new chat that resumes Claude Code's session.
   const [seenResume, setSeenResume] = useState(resume);
@@ -210,6 +272,7 @@ export function ClaudePanel({
         model,
         permissionMode: mode,
         effort,
+        language,
         resume: request.sessionId,
         allowedTools: [],
       })
@@ -246,6 +309,7 @@ export function ClaudePanel({
       model,
       permissionMode: mode,
       effort,
+      language,
       resume: chat.sessionId,
       allowedTools: tools,
     });
@@ -255,6 +319,7 @@ export function ClaudePanel({
   const send = async (text: string, tools = allowed) => {
     const t = text.trim();
     if (!t || chat.busy) return;
+    setFresh(null);
     dispatch({ type: "user", text: t });
     setDraft("");
     try {
@@ -357,6 +422,17 @@ export function ClaudePanel({
                 <Axolotl mood={mood} size={96} />
               ) : (
                 <img src="./moon-code-logo.svg" alt="" width={44} height={44} />
+              )}
+              {fresh && (
+                <p
+                  className="m-0 text-[0.75rem]"
+                  role="status"
+                  style={{ color: "var(--mc-accent)" }}
+                >
+                  {fresh === "kept"
+                    ? "New conversation. The last one is under Earlier conversations."
+                    : "New conversation."}
+                </p>
               )}
               <p className="m-0 font-semibold text-[var(--mc-text)]">
                 What are we building tonight?
@@ -495,16 +571,70 @@ export function ClaudePanel({
         </span>
         <span className="flex-1">Claude</span>
         {account?.loggedIn && (
-          <button
-            type="button"
-            className="mc-icon-btn"
-            style={{ width: 26, height: 26 }}
-            aria-label="New conversation"
-            title="New conversation"
-            onClick={newChat}
-          >
-            <PlusIcon size={15} />
-          </button>
+          <div ref={historyBox} className="relative flex items-center gap-0.5">
+            <button
+              type="button"
+              className="mc-icon-btn"
+              style={{ width: 26, height: 26 }}
+              aria-label="Earlier conversations"
+              aria-haspopup="menu"
+              aria-expanded={historyOpen}
+              title="Earlier conversations"
+              onClick={toggleHistory}
+            >
+              <HistoryIcon size={14} />
+            </button>
+            <button
+              type="button"
+              className="mc-icon-btn"
+              style={{ width: 26, height: 26 }}
+              aria-label="New conversation"
+              title="New conversation"
+              onClick={startNewChat}
+            >
+              <PlusIcon size={15} />
+            </button>
+            {historyOpen && (
+              <div
+                role="menu"
+                aria-label="Earlier conversations"
+                className="mc-popover absolute right-0 top-8 z-30 flex max-h-[60vh] w-[300px] flex-col overflow-auto p-1.5 normal-case tracking-normal"
+              >
+                {history === null && (
+                  <span className="px-2.5 py-1.5 text-[0.75rem] font-normal text-[var(--mc-text-faint)]">
+                    Loading…
+                  </span>
+                )}
+                {history?.length === 0 && (
+                  <span className="px-2.5 py-1.5 text-[0.75rem] font-normal text-[var(--mc-text-faint)]">
+                    No earlier conversations here yet.
+                  </span>
+                )}
+                {history?.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="menuitem"
+                    className="mc-menu-item flex-col items-start gap-0 font-normal"
+                    onClick={() => {
+                      setHistoryOpen(false);
+                      onResume?.(s);
+                    }}
+                  >
+                    <span className="w-full truncate text-[0.8125rem]">
+                      {s.title ?? "Untitled conversation"}
+                      {s.id === chat.sessionId && (
+                        <span className="mc-chip mc-chip-mint ml-1.5">this one</span>
+                      )}
+                    </span>
+                    <span className="text-[0.6875rem] text-[var(--mc-text-faint)]">
+                      {[timeAgo(s.updated), s.branch].filter(Boolean).join(" · ")}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         <button
           type="button"

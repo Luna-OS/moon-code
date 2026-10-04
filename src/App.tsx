@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sky } from "./theme/Sky";
-import { CloseIcon, CloudIcon, PlusIcon, TerminalIcon, FileIcon } from "./theme/icons";
+import { CloseIcon, CloudIcon, PlusIcon, TerminalIcon, FileIcon, MoonIcon } from "./theme/icons";
 import { useDocumentTheme } from "./theme/useTheme";
 import { defaultBridge } from "./lib/bridge";
 import { languageName, languageOf, kindColor } from "./lib/languages";
@@ -10,6 +10,7 @@ import type {
   CloudTask,
   GitHubAccount,
   MoonCodeBridge,
+  PlanUsage,
   RateLimit,
   Settings,
   SysInfo,
@@ -25,7 +26,10 @@ import { QuickOpen, type Command } from "./workbench/QuickOpen";
 import { Welcome } from "./workbench/Welcome";
 import { SettingsDialog } from "./workbench/SettingsDialog";
 import { CloudView } from "./workbench/CloudView";
+import { SkillsView } from "./workbench/SkillsView";
 import { CloudWeb } from "./workbench/CloudWeb";
+import { UsageView } from "./workbench/UsageView";
+import { AccountMenu } from "./workbench/AccountMenu";
 import { CLAUDE_CODE_WEB, isClaudeCodeUrl } from "./lib/cloud";
 
 // Monaco and xterm are big; they load when the first file or terminal opens.
@@ -91,8 +95,15 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
   const [cloudRepos, setCloudRepos] = useState<Repo[] | null>(null);
   /** The cloud tab (claude.ai/code inside Moon Code), when it is open. */
   const [web, setWeb] = useState<{ url: string; nonce: number } | null>(null);
-  /** Whether the cloud tab is the one in front (rather than a file). */
-  const [webShown, setWebShown] = useState(false);
+  /** Which kind of tab is in front: a file, the web tab or the Usage tab. */
+  const [front, setFront] = useState<"file" | "web" | "usage">("file");
+  /** The Usage tab, when it is open. */
+  const [usageOpen, setUsageOpen] = useState(false);
+  /** The plan's usage from Claude Code's `/usage` (null: none known, or no plan numbers). */
+  const [usage, setUsage] = useState<PlanUsage | null>(null);
+  /** When the usage numbers last arrived (from `/usage` or a message to Claude). */
+  const [usageAt, setUsageAt] = useState<number | null>(null);
+  const [accountMenu, setAccountMenu] = useState(false);
   /** The terminals running `claude --cloud` for a task, by terminal: the task's `at`. */
   const cloudTerminals = useRef(new Map<string, number>());
 
@@ -287,7 +298,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
   const openFile = useCallback(
     async (path: string, at?: { line: number; column: number }) => {
       if (at) setReveal({ ...at, nonce: Date.now() });
-      setWebShown(false);
+      setFront("file");
       if (tabs.some((t) => t.path === path)) {
         setActive(path);
         return;
@@ -407,7 +418,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
   /** Shows `url` (a claude.ai/code page) in the cloud tab. */
   const openWeb = useCallback((url: string) => {
     setWeb({ url, nonce: Date.now() });
-    setWebShown(true);
+    setFront("web");
   }, []);
 
   /** A link from anywhere in the workbench: cloud sessions stay in Moon Code. */
@@ -421,8 +432,18 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
 
   const closeWeb = useCallback(() => {
     setWeb(null);
-    setWebShown(false);
+    setFront((f) => (f === "web" ? (usageOpen ? "usage" : "file") : f));
+  }, [usageOpen]);
+
+  const openUsage = useCallback(() => {
+    setUsageOpen(true);
+    setFront("usage");
   }, []);
+
+  const closeUsage = useCallback(() => {
+    setUsageOpen(false);
+    setFront((f) => (f === "usage" ? (web ? "web" : "file") : f));
+  }, [web]);
 
   const ghExe = github?.exe ?? "gh";
   const githubSignIn = useCallback(() => {
@@ -565,10 +586,66 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
   const onLimits = useCallback(
     (rl: RateLimit) => {
       setLimits(rl);
+      setUsageAt(Date.now());
+      // A message's numbers are newer than the last report.
+      setUsage((u) =>
+        u ? { ...u, session: rl.fiveHour ?? u.session, week: rl.sevenDay ?? u.week } : u,
+      );
       bridge.setSettings({ lastRateLimit: rl }).catch(() => {});
     },
     [bridge],
   );
+
+  // The usage, live: Claude Code's `/usage` (it costs no usage) every 30 seconds while the Usage
+  // tab is in front and every 3 minutes otherwise, and right away when the tab opens or Moon Code
+  // comes back to the front. Without plan numbers there, the limits come from Claude's answers,
+  // and the Usage tab checks them itself every 10 minutes (that check is one tiny message).
+  const signedIn = Boolean(account?.loggedIn);
+  const usageShown = usageOpen && front === "usage";
+  const lastPing = useRef(0);
+  useEffect(() => {
+    if (!signedIn) return;
+    let cancelled = false;
+    const load = () => {
+      bridge
+        .claudeUsage()
+        .then((u) => {
+          if (cancelled) return;
+          if (u && u.available && (u.session || u.week)) {
+            setUsage(u);
+            setUsageAt(u.at);
+            setLimits((l) => ({
+              status: l?.status ?? null,
+              type: l?.type ?? null,
+              usingOverage: l?.usingOverage ?? false,
+              fiveHour: u.session ?? l?.fiveHour ?? null,
+              sevenDay: u.week ?? l?.sevenDay ?? null,
+              at: u.at,
+            }));
+          } else if (u) {
+            setUsage(u);
+          } else if (usageShown && Date.now() - lastPing.current > 10 * 60_000) {
+            lastPing.current = Date.now();
+            void bridge
+              .claudeCheckLimits()
+              .then((rl) => {
+                if (!cancelled && rl) onLimits({ ...rl, at: Date.now() });
+              })
+              .catch(() => {});
+          }
+        })
+        .catch(() => {});
+    };
+    load();
+    const t = setInterval(load, usageShown ? 30_000 : 180_000);
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [bridge, signedIn, usageShown, onLimits]);
 
   const openQuick = useCallback(
     (initial: string) => {
@@ -621,6 +698,8 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
         run: () => openWeb(CLAUDE_CODE_WEB),
       },
       { id: "claude-status", label: "Claude: Refresh account and limits", run: refreshAccount },
+      { id: "usage", label: "Claude: Show usage", run: openUsage },
+      { id: "skills", label: "Claude: Show skills", run: () => setView("skills") },
       {
         id: "projects",
         label: "Show projects",
@@ -664,6 +743,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       signIn,
       githubSignIn,
       openWeb,
+      openUsage,
       refreshAccount,
       newTerminal,
       togglePanel,
@@ -690,7 +770,8 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       else if (k === "l" && !e.shiftKey) setClaudeOpen((o) => !o);
       else if (e.code === "Backquote" && e.shiftKey) newTerminal();
       else if (e.code === "Backquote") togglePanel();
-      else if (k === "w" && webShown && web) closeWeb();
+      else if (k === "w" && front === "web" && web) closeWeb();
+      else if (k === "w" && front === "usage" && usageOpen) closeUsage();
       else if (k === "w" && active) closeTab(active);
       else if (k === ",") setShowSettings(true);
       else if (k === "o" && !e.shiftKey) void pickFolder();
@@ -707,14 +788,18 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
     active,
     closeTab,
     pickFolder,
-    webShown,
+    front,
     web,
     closeWeb,
+    usageOpen,
+    closeUsage,
   ]);
 
   const activeTab = tabs.find((t) => t.path === active) ?? null;
+  /** The web tab's name: Cloud for Claude Code on the web, else the site. */
+  const webLabel = web && isClaudeCodeUrl(web.url) ? "Cloud" : "claude.ai";
   /** The file in front: none while the cloud tab is. */
-  const shownTab = webShown && web ? null : activeTab;
+  const shownTab = (front === "web" && web) || (front === "usage" && usageOpen) ? null : activeTab;
   const editorActions = useMemo(
     () => ({
       save: () => void save(),
@@ -748,8 +833,9 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
           claudeBusy={Boolean(claudeInfo?.busy)}
           onView={toggleView}
           onClaude={() => setClaudeOpen((o) => !o)}
+          accountOpen={accountMenu}
           onAccount={() => {
-            setClaudeOpen(true);
+            setAccountMenu((o) => !o);
             refreshAccount();
           }}
           onSettings={() => setShowSettings(true)}
@@ -801,6 +887,18 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                   onGitHubRefresh={refreshGithub}
                 />
               )}
+              {view === "skills" && (
+                <SkillsView
+                  bridge={bridge}
+                  folder={folder}
+                  onOpenFile={(p) => void openFile(p)}
+                  onUse={(name) => {
+                    setClaudeOpen(true);
+                    setPrefill({ text: `/${name} `, nonce: Date.now() });
+                  }}
+                  onNotify={notify}
+                />
+              )}
               {view === "cloud" && (
                 <CloudView
                   claude={account}
@@ -835,7 +933,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
         )}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          {(tabs.length > 0 || web) && (
+          {(tabs.length > 0 || web || usageOpen) && (
             <div
               className="mc-tabs flex shrink-0 overflow-x-auto"
               role="tablist"
@@ -853,12 +951,12 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                     title={folder ? relative(folder, t.path) : t.path}
                     onClick={() => {
                       setActive(t.path);
-                      setWebShown(false);
+                      setFront("file");
                     }}
                     onKeyDown={(e) => {
                       if (e.key !== "Enter") return;
                       setActive(t.path);
-                      setWebShown(false);
+                      setFront("file");
                     }}
                     onMouseDown={(e) => {
                       if (e.button === 1) {
@@ -898,11 +996,11 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                 <div
                   role="tab"
                   tabIndex={0}
-                  aria-selected={webShown}
+                  aria-selected={front === "web"}
                   className="mc-tab group"
-                  title="Claude Code on the web, inside Moon Code"
-                  onClick={() => setWebShown(true)}
-                  onKeyDown={(e) => e.key === "Enter" && setWebShown(true)}
+                  title={`${web.url} – inside Moon Code`}
+                  onClick={() => setFront("web")}
+                  onKeyDown={(e) => e.key === "Enter" && setFront("web")}
                   onMouseDown={(e) => {
                     if (e.button === 1) {
                       e.preventDefault();
@@ -913,14 +1011,47 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                   <span style={{ color: "var(--mc-accent)" }}>
                     <CloudIcon size={14} />
                   </span>
-                  Cloud
+                  {webLabel}
                   <button
                     type="button"
                     className="mc-tab-close border-0 bg-transparent p-0"
-                    aria-label="Close Cloud"
+                    aria-label={`Close ${webLabel}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       closeWeb();
+                    }}
+                  >
+                    <CloseIcon size={12} />
+                  </button>
+                </div>
+              )}
+              {usageOpen && (
+                <div
+                  role="tab"
+                  tabIndex={0}
+                  aria-selected={front === "usage"}
+                  className="mc-tab group"
+                  title="Your plan's usage"
+                  onClick={() => setFront("usage")}
+                  onKeyDown={(e) => e.key === "Enter" && setFront("usage")}
+                  onMouseDown={(e) => {
+                    if (e.button === 1) {
+                      e.preventDefault();
+                      closeUsage();
+                    }
+                  }}
+                >
+                  <span style={{ color: "var(--mc-claude)" }}>
+                    <MoonIcon size={14} />
+                  </span>
+                  Usage
+                  <button
+                    type="button"
+                    className="mc-tab-close border-0 bg-transparent p-0"
+                    aria-label="Close Usage"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeUsage();
                     }}
                   >
                     <CloseIcon size={12} />
@@ -933,12 +1064,23 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
             className="relative min-h-0 flex-1"
             style={{ background: activeTab ? "var(--mc-editor)" : undefined }}
           >
+            {usageOpen && (
+              <UsageView
+                account={account}
+                usage={usage}
+                limits={limits}
+                updatedAt={usageAt}
+                visible={front === "usage"}
+                onOpenWeb={openWeb}
+                onSignIn={signIn}
+              />
+            )}
             {web && (
               <CloudWeb
                 url={web.url}
                 nonce={web.nonce}
                 embedded={bridge.kind === "electron"}
-                visible={webShown}
+                visible={front === "web"}
                 onOpenExternal={(url) => void bridge.openExternal(url)}
               />
             )}
@@ -1082,6 +1224,8 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                 onInstall={installClaude}
                 onRefreshAccount={refreshAccount}
                 onClose={() => setClaudeOpen(false)}
+                home={sys?.home ?? null}
+                onResume={(s) => setResume({ sessionId: s.id, title: s.title, nonce: Date.now() })}
                 onOpenFile={(p) =>
                   void openFile(folder && !/^([a-zA-Z]:)?[\\/]/.test(p) ? resolveIn(folder, p) : p)
                 }
@@ -1117,6 +1261,29 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
           initial={quick}
           onOpenFile={(rel) => folder && void openFile(resolveIn(folder, rel))}
           onClose={() => setQuick(null)}
+        />
+      )}
+      {accountMenu && (
+        <AccountMenu
+          account={account}
+          language={settings.claudeLanguage ?? null}
+          onLanguage={(l) => {
+            updateSettings({ claudeLanguage: l });
+            notify(
+              l
+                ? `Claude answers in ${l} from your next message.`
+                : "Claude answers in the language you write in.",
+            );
+          }}
+          onUsage={openUsage}
+          onOpenWeb={openWeb}
+          onOpenExternal={(url) => void bridge.openExternal(url)}
+          onShortcuts={() => openQuick(">")}
+          onSignIn={signIn}
+          onSignOut={() => {
+            void bridge.claudeLogout().then(refreshAccount);
+          }}
+          onClose={() => setAccountMenu(false)}
         />
       )}
       {showSettings && (
