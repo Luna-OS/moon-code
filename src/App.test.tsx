@@ -169,4 +169,44 @@ describe("Moon Code", () => {
     render(<App bridge={bridge} />);
     expect(await screen.findByRole("img", { name: /asleep/ })).toBeInTheDocument();
   });
+
+  it("starts a cloud task on another of your repositories, cloned first", async () => {
+    const bridge = new DemoBridge();
+    const start = vi.spyOn(bridge, "terminalStart");
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await user.click(await screen.findByRole("button", { name: "Cloud" }));
+    const list = await screen.findByRole("radiogroup", { name: "Repository for the cloud task" });
+    // The open folder's repository is picked to begin with.
+    expect(within(list).getByRole("radio", { name: /Moon-Zip/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await user.click(within(list).getByRole("radio", { name: /Moon-Explorer/ }));
+    expect(screen.getByText("Repository: Luna-OS/Moon-Explorer")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Cloud task"), "Add a grid view");
+    await user.click(screen.getByRole("button", { name: /Start in the cloud/ }));
+    await waitFor(() => {
+      const call = start.mock.calls.find(
+        ([, o]) => Array.isArray(o.command) && o.command.includes("--cloud"),
+      );
+      expect(call?.[1].cwd).toBe("/home/luna/Moon Code Projects/Moon-Explorer");
+    });
+    expect(bridge.cloned).toEqual(["Moon-Explorer"]);
+  });
+
+  it("finds, downloads and installs an update from Settings", async () => {
+    const bridge = new DemoBridge();
+    const install = vi.spyOn(bridge, "updateInstall");
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await user.click(await screen.findByRole("button", { name: "Settings" }));
+    const updates = await screen.findByRole("region", { name: "Updates" });
+    expect(within(updates).getByText(/Moon Code 0\.1\.0/)).toBeInTheDocument();
+    await user.click(within(updates).getByRole("button", { name: /Check for updates/ }));
+    expect(await within(updates).findByText("Moon Code 0.2.0 is out.")).toBeInTheDocument();
+    await user.click(within(updates).getByRole("button", { name: /Download 0\.2\.0/ }));
+    await user.click(await within(updates).findByRole("button", { name: /Restart and update/ }));
+    expect(install).toHaveBeenCalled();
+  });
 });

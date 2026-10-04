@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { AlertIcon, CheckIcon, CloudIcon, ExternalIcon, HistoryIcon } from "../theme/icons";
 import { timeAgo } from "../lib/format";
 import { basename } from "../lib/paths";
-import type { ClaudeAccount, CloudTask, GitHubAccount } from "../lib/types";
+import type { ClaudeAccount, CloudTask, GitHubAccount, Repo } from "../lib/types";
 import { GitHubCard } from "./GitHubCard";
 
 export const CLAUDE_CODE_WEB = "https://claude.ai/code";
@@ -18,9 +18,10 @@ export function CloudView({
   github,
   folder,
   repo,
+  repos,
   tasks,
   onRun,
-  onTaskStarted,
+  onStartTask,
   onClaudeSignIn,
   onGitHubSignIn,
   onGitHubSignOut,
@@ -33,10 +34,13 @@ export function CloudView({
   folder: string | null;
   /** "owner/name" of the open folder's GitHub remote. */
   repo: string | null;
+  /** The GitHub account's repositories (null while they load). */
+  repos: Repo[] | null;
   tasks: CloudTask[];
   /** Runs `claude <args>` in a new terminal tab with that title. */
   onRun: (args: string[], title: string) => void;
-  onTaskStarted: (task: CloudTask) => void;
+  /** Starts a cloud task on `target` (null: the open folder's repository). */
+  onStartTask: (task: string, target: Repo | null) => Promise<void>;
   onClaudeSignIn: () => void;
   onGitHubSignIn: () => void;
   onGitHubSignOut: () => void;
@@ -46,17 +50,32 @@ export function CloudView({
 }) {
   const [task, setTask] = useState("");
   const [session, setSession] = useState("");
+  const [filter, setFilter] = useState("");
+  /** The repository picked in the list; until then the open folder's. */
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState<string | null>(null);
   const claudeOk = Boolean(claude?.installed && claude.loggedIn);
   const githubOk = Boolean(github?.loggedIn);
-  const ready = claudeOk && githubOk && Boolean(repo);
+  const target = chosen ?? repo;
+  const ready = claudeOk && githubOk && Boolean(target) && !preparing;
 
-  const start = () => {
+  const start = async () => {
     const t = task.trim();
-    if (!t || !ready || !repo) return;
-    onRun(["--cloud", t], `Cloud: ${t.length > 24 ? `${t.slice(0, 23)}…` : t}`);
-    onTaskStarted({ task: t, repo, at: Date.now() });
-    setTask("");
+    if (!t || !ready || !target) return;
+    const other = target !== repo ? (repos ?? []).find((r) => r.fullName === target) : null;
+    setPreparing(target);
+    try {
+      await onStartTask(t, other ?? null);
+      setTask("");
+    } finally {
+      setPreparing(null);
+    }
   };
+
+  const q = filter.trim().toLowerCase();
+  const shown = (repos ?? []).filter(
+    (r) => !q || r.fullName.toLowerCase().includes(q) || r.description.toLowerCase().includes(q),
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -95,13 +114,13 @@ export function CloudView({
             label={githubOk ? `GitHub: @${github?.login}` : "GitHub account"}
           />
           <Requirement
-            ok={Boolean(repo)}
+            ok={Boolean(target)}
             label={
-              repo
-                ? `Repository: ${repo}`
+              target
+                ? `Repository: ${target}`
                 : folder
-                  ? `${basename(folder)} isn't on GitHub`
-                  : "Open a folder from GitHub"
+                  ? `${basename(folder)} isn't on GitHub – pick a repository`
+                  : "Pick a repository"
             }
           />
         </section>
@@ -115,6 +134,65 @@ export function CloudView({
           onOpen={onOpen}
         />
 
+        {githubOk && (
+          <section className="flex flex-col gap-1.5">
+            <h3 className="mc-eyebrow m-0">Your repositories</h3>
+            <input
+              className="mc-input w-full"
+              placeholder="Filter repositories"
+              aria-label="Filter repositories"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+            <div
+              role="radiogroup"
+              aria-label="Repository for the cloud task"
+              className="mc-inset flex max-h-[220px] flex-col overflow-auto p-1"
+            >
+              {repos === null && (
+                <span className="px-2 py-1 text-[0.75rem] text-[var(--mc-text-faint)]">
+                  Loading…
+                </span>
+              )}
+              {repos?.length === 0 && (
+                <span className="px-2 py-1 text-[0.75rem] text-[var(--mc-text-faint)]">
+                  No repositories found.
+                </span>
+              )}
+              {shown.map((r) => (
+                <button
+                  key={r.fullName}
+                  type="button"
+                  role="radio"
+                  aria-checked={target === r.fullName}
+                  className="mc-row shrink-0 flex-col items-start gap-0 py-1"
+                  title={r.description || r.fullName}
+                  onClick={() => setChosen(r.fullName)}
+                  style={{
+                    background: target === r.fullName ? "var(--mc-selected)" : undefined,
+                  }}
+                >
+                  <span className="flex w-full items-center gap-1.5">
+                    <span className="min-w-0 truncate font-medium">{r.name}</span>
+                    {r.private && <span className="mc-chip mc-chip-muted">private</span>}
+                    {r.fullName === repo && <span className="mc-chip mc-chip-mint">open</span>}
+                  </span>
+                  <span className="w-full truncate text-[0.6875rem] text-[var(--mc-text-faint)]">
+                    {[r.fullName, r.language, r.updated ? timeAgo(r.updated) : ""]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {target && target !== repo && (
+              <p className="m-0 text-[0.6875rem] text-[var(--mc-text-faint)]">
+                Not open here: Moon Code clones it into your projects folder first (once).
+              </p>
+            )}
+          </section>
+        )}
+
         <section className="flex flex-col gap-1.5">
           <h3 className="mc-eyebrow m-0 flex items-center gap-1.5">
             <CloudIcon size={12} /> New cloud task
@@ -122,14 +200,16 @@ export function CloudView({
           <div className="mc-composer px-3 pb-2 pt-2.5">
             <textarea
               rows={4}
-              placeholder={repo ? `What should Claude do in ${repo}?` : "What should Claude do?"}
+              placeholder={
+                target ? `What should Claude do in ${target}?` : "What should Claude do?"
+              }
               aria-label="Cloud task"
               value={task}
               onChange={(e) => setTask(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
-                  start();
+                  void start();
                 }
               }}
             />
@@ -141,9 +221,9 @@ export function CloudView({
                 type="button"
                 className="mc-btn mc-btn-primary mc-btn-sm"
                 disabled={!ready || !task.trim()}
-                onClick={start}
+                onClick={() => void start()}
               >
-                <CloudIcon size={13} /> Start in the cloud
+                <CloudIcon size={13} /> {preparing ? "Getting it ready…" : "Start in the cloud"}
               </button>
             </div>
           </div>

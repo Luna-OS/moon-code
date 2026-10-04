@@ -22,8 +22,9 @@ component from Microsoft – and your own Claude Code.
   full the conversation is and how much of your 5-hour and weekly limits is used** – as two moons
   that fill up. Pick the model, the permissions and the effort; allow a blocked command with one
   click. See [docs/claude.md](docs/claude.md).
-- **Codes in the cloud**: the **Cloud** view hands a task to Claude Code on the web (`claude
-  --cloud`), which works on the folder's GitHub repository in its own sandbox – your computer can
+- **Codes in the cloud**: the **Cloud** view lists your GitHub repositories and hands a task for
+  any of them to Claude Code on the web (`claude --cloud`; one that isn't on this computer is
+  cloned first), which works on it in its own sandbox – your computer can
   be off – and pushes a branch. Bring a cloud session back here (`--teleport`), attach to one,
   start **Remote Control** to steer Claude from your phone, or run an **Ultrareview** of the branch.
 - **Signs in to GitHub** through the GitHub CLI (`gh auth login` in a terminal tab, offered to be
@@ -38,6 +39,8 @@ component from Microsoft – and your own Claude Code.
 - **Knows your projects**: as soon as you are signed in, **Projects** lists every folder you have
   worked on with Claude Code, with its conversations (pick one to continue it), and your GitHub
   repositories, which clone and open with a click.
+- **Updates itself**: Settings → Updates checks GitHub for a new Moon Code, downloads it in the
+  background and installs it on "Restart and update". See [docs/updates.md](docs/updates.md).
 - **Night and day** themes (or follow Windows). See [docs/theme.md](docs/theme.md).
 
 | Cloud | Projects and the terminal | Continuing a conversation | Day theme |
@@ -76,7 +79,8 @@ npm run lint
 
 How the pieces fit together:
 
-- `electron/main.cjs` – the window and the IPC bridge (`electron/preload.cjs`).
+- `electron/main.cjs` – the window and the IPC bridge (`electron/preload.cjs`);
+  `electron/updater.cjs` – updates from the GitHub releases.
 - `electron/workspace.cjs` – files, quick-open list, search, git branch.
 - `electron/terminal.cjs` – terminals (node-pty).
 - `electron/claude/` – finding and running Claude Code: `cli.cjs` (command lines), `chat.cjs` (one

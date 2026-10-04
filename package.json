@@ -1,7 +1,7 @@
 {
   "name": "moon-code",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Moon Code – a code editor under the night sky, with Claude Code built in.",
   "license": "MIT",
   "type": "module",
@@ -26,6 +26,7 @@
     "icons": "node scripts/make-icons.cjs"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "node-pty": "^1.1.0"
   },
   "devDependencies": {
@@ -99,6 +100,14 @@
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "artifactName": "Moon-Code-Setup-${version}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Luna-OS",
+        "repo": "moon-code",
+        "releaseType": "release"
+      }
+    ]
   }
 }

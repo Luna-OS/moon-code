@@ -58,6 +58,7 @@ jobs:
       # Only build here; the release is published below with gh.
       - run: npx electron-builder --win --publish never
 
+      # latest.yml (and the installer's blockmap) is what Moon Code's built-in updater reads.
       - name: Publish the release
         shell: bash
         env:
@@ -67,6 +68,8 @@ jobs:
           gh release create "$TAG" \
             "release/Moon-Code-Setup-$VERSION.exe" \
             "release/Moon-Code-$VERSION-win-x64.zip" \
+            "release/Moon-Code-Setup-$VERSION.exe.blockmap" \
+            "release/latest.yml" \
             --target "$GITHUB_SHA" \
             --title "Moon Code $VERSION" \
             --notes-file "docs/releases/$TAG.md"

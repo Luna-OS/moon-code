@@ -1,16 +1,25 @@
 import { useEffect, useState } from "react";
 import { CloseIcon } from "../theme/icons";
-import type { Settings, ThemeSetting } from "../lib/types";
+import type { Settings, ThemeSetting, UpdateStatus } from "../lib/types";
+import { UpdatesSection } from "./UpdatesSection";
 
 /** The few settings Moon Code has. */
 export function SettingsDialog({
   settings,
   onChange,
   onClose,
+  update,
+  onUpdateCheck,
+  onUpdateDownload,
+  onUpdateInstall,
 }: {
   settings: Settings;
   onChange: (patch: Partial<Settings>) => void;
   onClose: () => void;
+  update: UpdateStatus | null;
+  onUpdateCheck: () => void;
+  onUpdateDownload: () => void;
+  onUpdateInstall: () => void;
 }) {
   const [owner, setOwner] = useState(settings.githubOwner);
   const [claudePath, setClaudePath] = useState(settings.claudePath ?? "");
@@ -70,6 +79,15 @@ export function SettingsDialog({
             ))}
           </div>
         </fieldset>
+
+        <UpdatesSection
+          status={update}
+          autoCheck={settings.autoUpdateCheck !== false}
+          onAutoCheck={(on) => onChange({ autoUpdateCheck: on })}
+          onCheck={onUpdateCheck}
+          onDownload={onUpdateDownload}
+          onInstall={onUpdateInstall}
+        />
 
         <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 text-[0.8125rem]">
           <label htmlFor="mc-font-size">Font size</label>
