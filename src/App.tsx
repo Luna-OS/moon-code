@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sky } from "./theme/Sky";
-import { CloseIcon, PlusIcon, TerminalIcon, FileIcon } from "./theme/icons";
+import { CloseIcon, CloudIcon, PlusIcon, TerminalIcon, FileIcon } from "./theme/icons";
 import { useDocumentTheme } from "./theme/useTheme";
 import { defaultBridge } from "./lib/bridge";
 import { languageName, languageOf, kindColor } from "./lib/languages";
@@ -25,6 +25,8 @@ import { QuickOpen, type Command } from "./workbench/QuickOpen";
 import { Welcome } from "./workbench/Welcome";
 import { SettingsDialog } from "./workbench/SettingsDialog";
 import { CloudView } from "./workbench/CloudView";
+import { CloudWeb } from "./workbench/CloudWeb";
+import { CLAUDE_CODE_WEB, isClaudeCodeUrl } from "./lib/cloud";
 
 // Monaco and xterm are big; they load when the first file or terminal opens.
 const CodeEditor = lazy(() => import("./workbench/CodeEditor"));
@@ -87,6 +89,12 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   /** The GitHub repositories for the Cloud view (null while they load). */
   const [cloudRepos, setCloudRepos] = useState<Repo[] | null>(null);
+  /** The cloud tab (claude.ai/code inside Moon Code), when it is open. */
+  const [web, setWeb] = useState<{ url: string; nonce: number } | null>(null);
+  /** Whether the cloud tab is the one in front (rather than a file). */
+  const [webShown, setWebShown] = useState(false);
+  /** The terminals running `claude --cloud` for a task, by terminal: the task's `at`. */
+  const cloudTerminals = useRef(new Map<string, number>());
 
   const theme = useDocumentTheme(settings?.theme ?? "dark");
   useEffect(() => {
@@ -279,6 +287,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
   const openFile = useCallback(
     async (path: string, at?: { line: number; column: number }) => {
       if (at) setReveal({ ...at, nonce: Date.now() });
+      setWebShown(false);
       if (tabs.some((t) => t.path === path)) {
         setActive(path);
         return;
@@ -359,6 +368,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       setTerminals((t) => [...t, { id, title, command, cwd }]);
       setActiveTerminal(id);
       setPanelOpen(true);
+      return id;
     },
     [],
   );
@@ -390,9 +400,29 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
 
   /** Runs `claude <args>` in a new terminal tab (the cloud commands are interactive). */
   const runClaude = useCallback(
-    (args: string[], title: string) => newTerminal([claudeExe, ...args], title),
+    (args: string[], title: string, cwd?: string) => newTerminal([claudeExe, ...args], title, cwd),
     [newTerminal, claudeExe],
   );
+
+  /** Shows `url` (a claude.ai/code page) in the cloud tab. */
+  const openWeb = useCallback((url: string) => {
+    setWeb({ url, nonce: Date.now() });
+    setWebShown(true);
+  }, []);
+
+  /** A link from anywhere in the workbench: cloud sessions stay in Moon Code. */
+  const openLink = useCallback(
+    (url: string) => {
+      if (isClaudeCodeUrl(url)) openWeb(url);
+      else void bridge.openExternal(url);
+    },
+    [bridge, openWeb],
+  );
+
+  const closeWeb = useCallback(() => {
+    setWeb(null);
+    setWebShown(false);
+  }, []);
 
   const ghExe = github?.exe ?? "gh";
   const githubSignIn = useCallback(() => {
@@ -429,6 +459,57 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
     [bridge],
   );
 
+  const updateCloudTask = useCallback(
+    (at: number, patch: Partial<CloudTask>) =>
+      setSettings((s) => {
+        if (!s) return s;
+        const cloudTasks = s.cloudTasks.map((t) => (t.at === at ? { ...t, ...patch } : t));
+        bridge.setSettings({ cloudTasks }).catch(() => {});
+        return { ...s, cloudTasks };
+      }),
+    [bridge],
+  );
+
+  // `claude --cloud` printed its session's link: remember it with the task and show the session
+  // here, in the cloud tab – not in a browser or the Claude app.
+  useEffect(() => {
+    const offSession = bridge.on("cloud:session", ({ terminalId, id, url }) => {
+      const at = cloudTerminals.current.get(terminalId);
+      if (at === undefined) return;
+      cloudTerminals.current.delete(terminalId);
+      updateCloudTask(at, { sessionId: id, url });
+      openWeb(url);
+    });
+    const offOpen = bridge.on("cloud:open", ({ url }) => openWeb(url));
+    return () => {
+      offSession();
+      offOpen();
+    };
+  }, [bridge, updateCloudTask, openWeb]);
+
+  /**
+   * Continues cloud session `id` on this computer (`claude --teleport`), in a checkout of its
+   * repository: the open folder when it is that one, else Moon Code's clone (made once).
+   */
+  const teleport = useCallback(
+    async (id: string, repoName: string | null) => {
+      let cwd: string | undefined;
+      if (repoName && repoName !== repo) {
+        try {
+          cwd = await bridge.githubClone(
+            `https://github.com/${repoName}.git`,
+            repoName.split("/").pop() ?? repoName,
+          );
+        } catch (e) {
+          notify((e as Error).message);
+          return;
+        }
+      }
+      runClaude(["--teleport", id], "Cloud session here", cwd);
+    },
+    [bridge, repo, runClaude, notify],
+  );
+
   /**
    * A cloud task on `target`, or on the open folder's repository (null). Another repository is
    * cloned first (once – an existing clone is reused), because `claude --cloud` works on the
@@ -447,12 +528,16 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
         }
         name = target.fullName;
       }
-      newTerminal(
+      const id = newTerminal(
         [claudeExe, "--cloud", task],
         `Cloud: ${task.length > 24 ? `${task.slice(0, 23)}…` : task}`,
         cwd,
       );
-      if (name) addCloudTask({ task, repo: name, at: Date.now() });
+      if (name) {
+        const at = Date.now();
+        cloudTerminals.current.set(id, at);
+        addCloudTask({ task, repo: name, at });
+      }
     },
     [bridge, repo, claudeExe, newTerminal, notify, addCloudTask],
   );
@@ -530,6 +615,11 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       { id: "claude-signin", label: "Claude: Sign in", run: signIn },
       { id: "github-signin", label: "GitHub: Sign in", run: githubSignIn },
       { id: "cloud", label: "Cloud: New task for Claude on the web", run: () => setView("cloud") },
+      {
+        id: "cloud-web",
+        label: "Cloud: Open Claude Code on the web",
+        run: () => openWeb(CLAUDE_CODE_WEB),
+      },
       { id: "claude-status", label: "Claude: Refresh account and limits", run: refreshAccount },
       {
         id: "projects",
@@ -573,6 +663,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       askClaude,
       signIn,
       githubSignIn,
+      openWeb,
       refreshAccount,
       newTerminal,
       togglePanel,
@@ -599,6 +690,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       else if (k === "l" && !e.shiftKey) setClaudeOpen((o) => !o);
       else if (e.code === "Backquote" && e.shiftKey) newTerminal();
       else if (e.code === "Backquote") togglePanel();
+      else if (k === "w" && webShown && web) closeWeb();
       else if (k === "w" && active) closeTab(active);
       else if (k === ",") setShowSettings(true);
       else if (k === "o" && !e.shiftKey) void pickFolder();
@@ -607,9 +699,22 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [save, openQuick, newTerminal, togglePanel, active, closeTab, pickFolder]);
+  }, [
+    save,
+    openQuick,
+    newTerminal,
+    togglePanel,
+    active,
+    closeTab,
+    pickFolder,
+    webShown,
+    web,
+    closeWeb,
+  ]);
 
   const activeTab = tabs.find((t) => t.path === active) ?? null;
+  /** The file in front: none while the cloud tab is. */
+  const shownTab = webShown && web ? null : activeTab;
   const editorActions = useMemo(
     () => ({
       save: () => void save(),
@@ -706,6 +811,9 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                   tasks={settings.cloudTasks ?? []}
                   onRun={runClaude}
                   onStartTask={startCloudTask}
+                  onOpenWeb={openWeb}
+                  onSend={(ref, message) => bridge.cloudSend(ref, message)}
+                  onTeleport={(id, repoName) => void teleport(id, repoName)}
                   onClaudeSignIn={signIn}
                   onGitHubSignIn={githubSignIn}
                   onGitHubSignOut={githubSignOut}
@@ -727,7 +835,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
         )}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          {tabs.length > 0 && (
+          {(tabs.length > 0 || web) && (
             <div
               className="mc-tabs flex shrink-0 overflow-x-auto"
               role="tablist"
@@ -740,11 +848,18 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                     key={t.path}
                     role="tab"
                     tabIndex={0}
-                    aria-selected={t.path === active}
+                    aria-selected={t.path === shownTab?.path}
                     className="mc-tab group"
                     title={folder ? relative(folder, t.path) : t.path}
-                    onClick={() => setActive(t.path)}
-                    onKeyDown={(e) => e.key === "Enter" && setActive(t.path)}
+                    onClick={() => {
+                      setActive(t.path);
+                      setWebShown(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      setActive(t.path);
+                      setWebShown(false);
+                    }}
                     onMouseDown={(e) => {
                       if (e.button === 1) {
                         e.preventDefault();
@@ -779,12 +894,54 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                   </div>
                 );
               })}
+              {web && (
+                <div
+                  role="tab"
+                  tabIndex={0}
+                  aria-selected={webShown}
+                  className="mc-tab group"
+                  title="Claude Code on the web, inside Moon Code"
+                  onClick={() => setWebShown(true)}
+                  onKeyDown={(e) => e.key === "Enter" && setWebShown(true)}
+                  onMouseDown={(e) => {
+                    if (e.button === 1) {
+                      e.preventDefault();
+                      closeWeb();
+                    }
+                  }}
+                >
+                  <span style={{ color: "var(--mc-accent)" }}>
+                    <CloudIcon size={14} />
+                  </span>
+                  Cloud
+                  <button
+                    type="button"
+                    className="mc-tab-close border-0 bg-transparent p-0"
+                    aria-label="Close Cloud"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeWeb();
+                    }}
+                  >
+                    <CloseIcon size={12} />
+                  </button>
+                </div>
+              )}
             </div>
           )}
           <div
             className="relative min-h-0 flex-1"
             style={{ background: activeTab ? "var(--mc-editor)" : undefined }}
           >
+            {web && (
+              <CloudWeb
+                url={web.url}
+                nonce={web.nonce}
+                embedded={bridge.kind === "electron"}
+                visible={webShown}
+                onOpenExternal={(url) => void bridge.openExternal(url)}
+              />
+            )}
             {activeTab ? (
               <Suspense fallback={null}>
                 <CodeEditor
@@ -886,6 +1043,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                     command={t.command}
                     theme={theme}
                     visible={panelOpen && t.id === activeTerminal}
+                    onLink={openLink}
                   />
                 ))}
               </Suspense>
@@ -934,8 +1092,8 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
       </div>
       <StatusBar
         branch={branch}
-        cursor={activeTab ? cursor : null}
-        language={activeTab ? languageName(activeTab.language) : null}
+        cursor={shownTab ? cursor : null}
+        language={shownTab ? languageName(shownTab.language) : null}
         model={claudeInfo?.model ?? settings.claudeModel}
         limits={account?.loggedIn ? limits : null}
         context={

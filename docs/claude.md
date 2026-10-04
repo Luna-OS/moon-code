@@ -37,19 +37,40 @@ The **Cloud** view hands work to Claude Code on the web. It needs your Claude ac
 account, and lists your repositories: the open folder's is picked to begin with, and any other can
 be picked instead – Moon Code clones it into the projects folder first (once), because
 `claude --cloud` works on the repository of the folder it runs in (the first time, claude.ai/code asks to
-connect the repository through Claude's GitHub app). Every action runs your Claude Code in a
-terminal tab:
+connect the repository through Claude's GitHub app). Every action runs your Claude Code:
 
 | Button | What runs |
 | --- | --- |
-| Start in the cloud | `claude --cloud "<the task>"` – a new cloud session on the repository |
-| Attach | `claude --cloud <session link or ID>` |
+| Start in the cloud | `claude --cloud "<the task>"` in a terminal tab – a new cloud session on the repository |
+| Open here | the session in Moon Code's **Cloud tab** |
+| Message | `claude -p "<message>" --cloud <session> --output-format json` – queues a follow-up into the session |
+| Bring here | `claude --teleport <session>` in a terminal tab, in a checkout of the session's repository |
 | Bring one here | `claude --teleport` – pick a cloud session and continue it on this computer |
 | Remote Control | `claude --remote-control <folder name>` – steer this session from your phone or claude.ai |
 | Ultrareview | `claude ultrareview` – a cloud review of the current branch by several agents |
-| Open claude.ai/code | the web app, to follow and review cloud sessions |
+| All sessions | claude.ai/code in the Cloud tab |
 
-The tasks you start are listed under "Started from Moon Code".
+The tasks you start are listed under "Started from Moon Code", each with its session once
+`claude --cloud` printed the link. A session link or ID can also be pasted.
+
+### The Cloud tab
+
+Cloud sessions run and are followed **inside Moon Code**, not in a browser or the Claude app:
+claude.ai/code opens as a tab next to your files (`src/workbench/CloudWeb.tsx`, an Electron
+`<webview>`).
+
+- When `claude --cloud` prints "Open in browser: https://claude.ai/code/session_…", Moon Code
+  picks the link up from the terminal (`electron/cloud.cjs`, also from OSC 8 links), remembers it
+  with the task and opens the session in the Cloud tab. Links to claude.ai/code clicked in a
+  terminal or in the chat open there too.
+- The tab has its own browser session (`persist:claude-web`): sign in to claude.ai there once and
+  it stays signed in. That sign-in is the website's own; Moon Code doesn't read it.
+- It only ever starts on claude.ai, without Node and without a preload. Sign-in windows (Google,
+  Apple, GitHub's sign-in and app installation) open as small Moon Code windows with the same
+  session; every other link opens in your browser.
+- The user agent leaves out Electron's token, since some sign-in pages turn away browsers they
+  don't know. If Google's sign-in still refuses, sign in with your email address.
+- "Browser" in the tab's toolbar opens the page in your browser after all.
 
 ## Axo
 

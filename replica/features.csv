@@ -16,7 +16,7 @@ Show the plan's 5-hour and weekly limits,ai,must,no,yes,new: moon-phase gauges
 Projects from the Claude account appear after sign-in,ai,must,no,yes,new: Claude Code projects + GitHub repositories
 Continue an earlier Claude conversation,ai,should,partial,yes,
 Sign in with GitHub,accounts,must,yes,yes,through the GitHub CLI
-Cloud coding agent on a GitHub repository,ai,should,yes,yes,Claude Code on the web (claude --cloud)
+Cloud coding agent on a GitHub repository,ai,should,yes,yes,Claude Code on the web (claude --cloud) in an in-app Cloud tab
 Update the app from inside it,settings,should,yes,yes,electron-updater on the GitHub releases
 Animated mascot that shows what the AI is doing,ai,could,no,yes,new: Axo the pixel axolotl
 Night and day theme,theme,must,yes,yes,the Luna-OS Moon palette

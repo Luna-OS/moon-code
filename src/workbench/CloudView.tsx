@@ -1,17 +1,24 @@
 import { useState, type ReactNode } from "react";
-import { AlertIcon, CheckIcon, CloudIcon, ExternalIcon, HistoryIcon } from "../theme/icons";
+import {
+  AlertIcon,
+  CheckIcon,
+  CloudIcon,
+  DownloadIcon,
+  HistoryIcon,
+  SendIcon,
+} from "../theme/icons";
+import { CLAUDE_CODE_WEB, sessionRef, sessionUrl } from "../lib/cloud";
 import { timeAgo } from "../lib/format";
 import { basename } from "../lib/paths";
-import type { ClaudeAccount, CloudTask, GitHubAccount, Repo } from "../lib/types";
+import type { ClaudeAccount, CloudSent, CloudTask, GitHubAccount, Repo } from "../lib/types";
 import { GitHubCard } from "./GitHubCard";
-
-export const CLAUDE_CODE_WEB = "https://claude.ai/code";
 
 /**
  * Cloud coding: hand a task to Claude Code on the web, which works on the GitHub repository in a
- * cloud sandbox (your computer can be off) and pushes a branch when it's done. Everything runs
+ * cloud sandbox (your computer can be off) and pushes a branch when it's done. The tasks start
  * through your own Claude Code (`claude --cloud`, `--teleport`, `--remote-control`, `ultrareview`)
- * in a terminal tab, so you see exactly what happens.
+ * in a terminal tab, so you see exactly what happens; the sessions themselves open in Moon Code's
+ * cloud tab, and follow-ups go to them from here (`claude -p … --cloud <session>`).
  */
 export function CloudView({
   claude,
@@ -28,6 +35,9 @@ export function CloudView({
   onGitHubInstall,
   onGitHubRefresh,
   onOpen,
+  onOpenWeb,
+  onSend,
+  onTeleport,
 }: {
   claude: ClaudeAccount | null;
   github: GitHubAccount | null;
@@ -46,10 +56,19 @@ export function CloudView({
   onGitHubSignOut: () => void;
   onGitHubInstall: () => void;
   onGitHubRefresh: () => void;
+  /** Opens a link in the browser (GitHub pages). */
   onOpen: (url: string) => void;
+  /** Opens a claude.ai/code page in Moon Code's cloud tab. */
+  onOpenWeb: (url: string) => void;
+  /** Queues a message into a cloud session. */
+  onSend: (ref: string, message: string) => Promise<CloudSent>;
+  /** Continues a cloud session on this computer, in a checkout of `repo` (null: the open one). */
+  onTeleport: (id: string, repo: string | null) => void;
 }) {
   const [task, setTask] = useState("");
   const [session, setSession] = useState("");
+  /** The session whose message box is open: a task's `at`, or "typed" for the field. */
+  const [messaging, setMessaging] = useState<number | "typed" | null>(null);
   const [filter, setFilter] = useState("");
   /** The repository picked in the list; until then the open folder's. */
   const [chosen, setChosen] = useState<string | null>(null);
@@ -72,6 +91,7 @@ export function CloudView({
     }
   };
 
+  const typed = sessionRef(session);
   const q = filter.trim().toLowerCase();
   const shown = (repos ?? []).filter(
     (r) => !q || r.fullName.toLowerCase().includes(q) || r.description.toLowerCase().includes(q),
@@ -86,16 +106,17 @@ export function CloudView({
           className="mc-icon-btn"
           style={{ width: 24, height: 24 }}
           aria-label="Open Claude Code on the web"
-          title="Open claude.ai/code"
-          onClick={() => onOpen(CLAUDE_CODE_WEB)}
+          title="Open claude.ai/code in Moon Code"
+          onClick={() => onOpenWeb(CLAUDE_CODE_WEB)}
         >
-          <ExternalIcon />
+          <CloudIcon size={14} />
         </button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 pb-4 text-[0.8125rem]">
         <p className="m-0 text-[0.75rem] text-[var(--mc-text-muted)]">
           Hand a task to Claude in the cloud. It works on your GitHub repository in its own sandbox
-          – your computer can even be off – and pushes a branch when it&apos;s done.
+          – your computer can even be off – and pushes a branch when it&apos;s done. You follow it
+          right here, in the Cloud tab.
         </p>
 
         <section className="flex flex-col gap-1.5" aria-label="What the cloud needs">
@@ -228,8 +249,8 @@ export function CloudView({
             </div>
           </div>
           <p className="m-0 text-[0.6875rem] text-[var(--mc-text-faint)]">
-            The first time, claude.ai/code asks to connect the repository through Claude&apos;s
-            GitHub app.
+            The session opens in the Cloud tab as soon as it starts. The first time, Claude asks to
+            connect the repository through its GitHub app.
           </p>
         </section>
 
@@ -239,9 +260,9 @@ export function CloudView({
             <button
               type="button"
               className="mc-btn mc-btn-ghost mc-btn-sm"
-              onClick={() => onOpen(CLAUDE_CODE_WEB)}
+              onClick={() => onOpenWeb(CLAUDE_CODE_WEB)}
             >
-              <ExternalIcon /> Open claude.ai/code
+              <CloudIcon size={13} /> All sessions
             </button>
             <button
               type="button"
@@ -253,26 +274,35 @@ export function CloudView({
               Bring one here
             </button>
           </div>
-          <div className="flex gap-1.5">
-            <input
-              className="mc-input min-w-0 flex-1"
-              placeholder="Session link or ID"
-              aria-label="Cloud session link or ID"
-              value={session}
-              onChange={(e) => setSession(e.target.value)}
+          <input
+            className="mc-input w-full"
+            placeholder="Session link or ID"
+            aria-label="Cloud session link or ID"
+            aria-invalid={Boolean(session.trim()) && !typed}
+            value={session}
+            onChange={(e) => setSession(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && typed) onOpenWeb(sessionUrl(typed));
+            }}
+          />
+          {typed ? (
+            <SessionActions
+              id={typed}
+              claudeOk={claudeOk}
+              canTeleport={Boolean(folder)}
+              messaging={messaging === "typed"}
+              onOpen={() => onOpenWeb(sessionUrl(typed))}
+              onMessage={() => setMessaging((m) => (m === "typed" ? null : "typed"))}
+              onTeleport={() => onTeleport(typed, null)}
+              onSend={(text) => onSend(typed, text)}
             />
-            <button
-              type="button"
-              className="mc-btn mc-btn-sm"
-              disabled={!claudeOk || !session.trim()}
-              onClick={() => {
-                onRun(["--cloud", session.trim()], "Cloud session");
-                setSession("");
-              }}
-            >
-              Attach
-            </button>
-          </div>
+          ) : (
+            session.trim() && (
+              <p className="m-0 text-[0.6875rem] text-[var(--mc-warning)]">
+                That isn&apos;t a session link (claude.ai/code/session_…) or ID.
+              </p>
+            )
+          )}
         </section>
 
         <section className="flex flex-col gap-1.5">
@@ -308,22 +338,159 @@ export function CloudView({
             <h3 className="mc-eyebrow m-0 flex items-center gap-1.5">
               <HistoryIcon size={12} /> Started from Moon Code
             </h3>
-            {tasks.slice(0, 12).map((t) => (
-              <button
-                key={`${t.at}-${t.task}`}
-                type="button"
-                className="mc-row flex-col items-start gap-0 py-1"
-                title="Open claude.ai/code to follow it"
-                onClick={() => onOpen(CLAUDE_CODE_WEB)}
-              >
-                <span className="w-full truncate">{t.task}</span>
-                <span className="text-[0.6875rem] text-[var(--mc-text-faint)]">
-                  {t.repo} · {timeAgo(t.at)}
-                </span>
-              </button>
-            ))}
+            {tasks.slice(0, 12).map((t) => {
+              const id = t.sessionId;
+              const url = t.url ?? (id ? sessionUrl(id) : CLAUDE_CODE_WEB);
+              return (
+                <div key={`${t.at}-${t.task}`} className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    className="mc-row flex-col items-start gap-0 py-1"
+                    title={id ? "Open the session here" : "Open your sessions here"}
+                    onClick={() => onOpenWeb(url)}
+                  >
+                    <span className="w-full truncate">{t.task}</span>
+                    <span className="text-[0.6875rem] text-[var(--mc-text-faint)]">
+                      {t.repo} · {timeAgo(t.at)}
+                    </span>
+                  </button>
+                  {id && (
+                    <div className="pl-2">
+                      <SessionActions
+                        id={id}
+                        claudeOk={claudeOk}
+                        canTeleport
+                        messaging={messaging === t.at}
+                        onOpen={() => onOpenWeb(url)}
+                        onMessage={() => setMessaging((m) => (m === t.at ? null : t.at))}
+                        onTeleport={() => onTeleport(id, t.repo)}
+                        onSend={(text) => onSend(id, text)}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </section>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** What can be done with one cloud session: open it here, message it, continue it locally. */
+function SessionActions({
+  id,
+  claudeOk,
+  canTeleport,
+  messaging,
+  onOpen,
+  onMessage,
+  onTeleport,
+  onSend,
+}: {
+  id: string;
+  claudeOk: boolean;
+  canTeleport: boolean;
+  messaging: boolean;
+  onOpen: () => void;
+  onMessage: () => void;
+  onTeleport: () => void;
+  onSend: (text: string) => Promise<CloudSent>;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Session ${id}`}>
+        <button type="button" className="mc-btn mc-btn-sm" onClick={onOpen}>
+          <CloudIcon size={13} /> Open here
+        </button>
+        <button
+          type="button"
+          className="mc-btn mc-btn-ghost mc-btn-sm"
+          aria-expanded={messaging}
+          disabled={!claudeOk}
+          onClick={onMessage}
+        >
+          <SendIcon size={12} /> Message
+        </button>
+        <button
+          type="button"
+          className="mc-btn mc-btn-ghost mc-btn-sm"
+          disabled={!claudeOk || !canTeleport}
+          title="Continue this session on this computer (claude --teleport)"
+          onClick={onTeleport}
+        >
+          <DownloadIcon size={12} /> Bring here
+        </button>
+      </div>
+      {messaging && <FollowUp onSend={onSend} />}
+    </div>
+  );
+}
+
+/** A message for a running cloud session; Claude picks it up there. */
+function FollowUp({ onSend }: { onSend: (text: string) => Promise<CloudSent> }) {
+  const [text, setText] = useState("");
+  const [state, setState] = useState<
+    { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string }
+  >({ kind: "idle" });
+  const send = async () => {
+    const t = text.trim();
+    if (!t || state.kind === "sending") return;
+    setState({ kind: "sending" });
+    try {
+      await onSend(t);
+      setText("");
+      setState({ kind: "sent" });
+    } catch (e) {
+      setState({ kind: "error", message: (e as Error).message });
+    }
+  };
+  return (
+    <div className="mc-composer px-2.5 pb-1.5 pt-2">
+      <textarea
+        rows={2}
+        placeholder="Tell Claude in the cloud…"
+        aria-label="Message for the cloud session"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            void send();
+          }
+        }}
+      />
+      <div className="mt-1 flex items-center gap-2">
+        <span
+          className="min-w-0 flex-1 text-[0.6875rem]"
+          aria-live="polite"
+          style={{
+            color:
+              state.kind === "error"
+                ? "var(--mc-danger)"
+                : state.kind === "sent"
+                  ? "var(--mc-success)"
+                  : "var(--mc-text-faint)",
+          }}
+        >
+          {state.kind === "sending"
+            ? "Sending…"
+            : state.kind === "sent"
+              ? "Sent – Claude picks it up in the session."
+              : state.kind === "error"
+                ? state.message
+                : "Ctrl+Enter sends it"}
+        </span>
+        <button
+          type="button"
+          className="mc-btn mc-btn-primary mc-btn-sm"
+          disabled={!text.trim() || state.kind === "sending"}
+          aria-label="Send to the cloud session"
+          onClick={() => void send()}
+        >
+          <SendIcon size={12} /> Send
+        </button>
       </div>
     </div>
   );

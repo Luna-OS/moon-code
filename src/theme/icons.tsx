@@ -116,6 +116,18 @@ export const ReloadIcon = ({ size }: P) => (
   </Svg>
 );
 
+export const BackIcon = ({ size = 15 }: P) => (
+  <Svg size={size}>
+    <path d="M19 12H5M11 18l-6-6 6-6" />
+  </Svg>
+);
+
+export const ForwardIcon = ({ size = 15 }: P) => (
+  <Svg size={size}>
+    <path d="M5 12h14M13 6l6 6-6 6" />
+  </Svg>
+);
+
 export const ChevronIcon = ({ size = 14, open = false }: P & { open?: boolean }) => (
   <Svg size={size}>
     <path d={open ? "m6 9 6 6 6-6" : "m9 6 6 6-6 6"} />

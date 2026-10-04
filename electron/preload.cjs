@@ -9,7 +9,14 @@ async function call(channel, ...args) {
   return { __envelope: true, ...res };
 }
 
-const EVENTS = new Set(["terminal:data", "terminal:exit", "claude:event", "update:status"]);
+const EVENTS = new Set([
+  "terminal:data",
+  "terminal:exit",
+  "claude:event",
+  "update:status",
+  "cloud:session",
+  "cloud:open",
+]);
 
 contextBridge.exposeInMainWorld("moonCode", {
   kind: "electron",
@@ -49,6 +56,8 @@ contextBridge.exposeInMainWorld("moonCode", {
   claudeSend: (chatId, text) => call("claude:send", chatId, text),
   claudeStop: (chatId) => call("claude:stop", chatId),
   claudeCheckLimits: () => call("claude:checkLimits"),
+
+  cloudSend: (ref, message) => call("cloud:send", ref, message),
 
   githubAccount: () => call("github:account"),
   githubRepos: () => call("github:repos"),

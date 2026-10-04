@@ -107,6 +107,16 @@ export interface CloudTask {
   task: string;
   repo: string;
   at: number;
+  /** The cloud session (session_… / cse_…), once `claude --cloud` printed its link. */
+  sessionId?: string;
+  url?: string;
+}
+
+/** A follow-up that reached a cloud session. */
+export interface CloudSent {
+  ok: true;
+  sessionId: string | null;
+  url: string | null;
 }
 
 export interface ClaudeProject {
@@ -196,6 +206,10 @@ export interface BridgeEvents {
   "terminal:exit": { id: string; code: number };
   "claude:event": { chatId: string; event: ClaudeEvent };
   "update:status": UpdateStatus;
+  /** A terminal printed a cloud session's link (electron/cloud.cjs). */
+  "cloud:session": { terminalId: string; id: string; url: string };
+  /** A cloud session link was opened somewhere in the workbench. */
+  "cloud:open": { url: string };
 }
 
 export interface MoonCodeBridge {
@@ -240,6 +254,9 @@ export interface MoonCodeBridge {
   claudeSend(chatId: string, text: string): Promise<boolean>;
   claudeStop(chatId: string): Promise<void>;
   claudeCheckLimits(): Promise<RateLimit | null>;
+
+  /** Queues `message` into a cloud session (`claude -p … --cloud <ref>`). */
+  cloudSend(ref: string, message: string): Promise<CloudSent>;
 
   githubAccount(): Promise<GitHubAccount>;
   githubRepos(): Promise<{ source: "gh" | "api" | "none"; repos: Repo[] }>;
