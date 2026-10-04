@@ -13,6 +13,8 @@ import type {
   RateLimit,
   Settings,
   SysInfo,
+  Repo,
+  UpdateStatus,
 } from "./lib/types";
 import { ActivityBar, Sash, StatusBar, TitleBar, type SideView } from "./workbench/chrome";
 import { ExplorerView } from "./workbench/ExplorerView";
@@ -41,6 +43,8 @@ interface TerminalTab {
   id: string;
   title: string;
   command?: string[] | string;
+  /** Where it starts; the open folder when unset. */
+  cwd?: string;
 }
 
 let terminalSeq = 0;
@@ -80,6 +84,9 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
   const [waitingForGithub, setWaitingForGithub] = useState<"in" | "out" | null>(null);
   /** "owner/name" of the open folder's GitHub remote. */
   const [repo, setRepo] = useState<string | null>(null);
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  /** The GitHub repositories for the Cloud view (null while they load). */
+  const [cloudRepos, setCloudRepos] = useState<Repo[] | null>(null);
 
   const theme = useDocumentTheme(settings?.theme ?? "dark");
   useEffect(() => {
@@ -199,6 +206,37 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
     refreshGithub();
   }, [bridge, refreshAccount, refreshGithub, loadGitInfo]);
 
+  // The Cloud view lists the signed-in GitHub account's repositories.
+  const githubLogin = github?.loggedIn ? github.login : null;
+  useEffect(() => {
+    if (view !== "cloud" || !githubLogin) return;
+    let cancelled = false;
+    bridge
+      .githubRepos()
+      .then((r) => !cancelled && setCloudRepos(r.repos))
+      .catch(() => !cancelled && setCloudRepos([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [bridge, view, githubLogin]);
+
+  // Moon Code's own updates: the state now, and every change (a check at start, a download…).
+  const announced = useRef<string | null>(null);
+  useEffect(() => {
+    bridge
+      .updateState()
+      .then(setUpdate)
+      .catch(() => {});
+    return bridge.on("update:status", (u) => {
+      setUpdate(u);
+      // Say once per version that there's a new one.
+      if (u.state === "available" && u.version && announced.current !== u.version) {
+        announced.current = u.version;
+        setToast(`Moon Code ${u.version} is out – Settings → Updates.`);
+      }
+    });
+  }, [bridge]);
+
   // While `gh auth login` (or logout) runs in a terminal, look for the change every few seconds.
   useEffect(() => {
     if (!waitingForGithub) return;
@@ -315,12 +353,15 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
 
   // ---------------------------------------------------------------- panels
 
-  const newTerminal = useCallback((command?: string[] | string, title = "Terminal") => {
-    const id = `term-${++terminalSeq}`;
-    setTerminals((t) => [...t, { id, title, command }]);
-    setActiveTerminal(id);
-    setPanelOpen(true);
-  }, []);
+  const newTerminal = useCallback(
+    (command?: string[] | string, title = "Terminal", cwd?: string) => {
+      const id = `term-${++terminalSeq}`;
+      setTerminals((t) => [...t, { id, title, command, cwd }]);
+      setActiveTerminal(id);
+      setPanelOpen(true);
+    },
+    [],
+  );
 
   const togglePanel = useCallback(() => {
     setPanelOpen((open) => {
@@ -386,6 +427,34 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
         return { ...s, cloudTasks };
       }),
     [bridge],
+  );
+
+  /**
+   * A cloud task on `target`, or on the open folder's repository (null). Another repository is
+   * cloned first (once – an existing clone is reused), because `claude --cloud` works on the
+   * repository of the folder it runs in.
+   */
+  const startCloudTask = useCallback(
+    async (task: string, target: Repo | null) => {
+      let cwd: string | undefined;
+      let name = repo;
+      if (target) {
+        try {
+          cwd = await bridge.githubClone(target.cloneUrl, target.name);
+        } catch (e) {
+          notify((e as Error).message);
+          return;
+        }
+        name = target.fullName;
+      }
+      newTerminal(
+        [claudeExe, "--cloud", task],
+        `Cloud: ${task.length > 24 ? `${task.slice(0, 23)}…` : task}`,
+        cwd,
+      );
+      if (name) addCloudTask({ task, repo: name, at: Date.now() });
+    },
+    [bridge, repo, claudeExe, newTerminal, notify, addCloudTask],
   );
 
   const installClaude = useCallback(() => {
@@ -579,6 +648,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
             refreshAccount();
           }}
           onSettings={() => setShowSettings(true)}
+          updateReady={update?.state === "available" || update?.state === "ready"}
         />
         {view && (
           <>
@@ -632,9 +702,10 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                   github={github}
                   folder={folder}
                   repo={repo}
+                  repos={cloudRepos}
                   tasks={settings.cloudTasks ?? []}
                   onRun={runClaude}
-                  onTaskStarted={addCloudTask}
+                  onStartTask={startCloudTask}
                   onClaudeSignIn={signIn}
                   onGitHubSignIn={githubSignIn}
                   onGitHubSignOut={githubSignOut}
@@ -811,7 +882,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                     key={t.id}
                     bridge={bridge}
                     id={t.id}
-                    cwd={folder}
+                    cwd={t.cwd ?? folder}
                     command={t.command}
                     theme={theme}
                     visible={panelOpen && t.id === activeTerminal}
@@ -895,6 +966,10 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
           settings={settings}
           onChange={updateSettings}
           onClose={() => setShowSettings(false)}
+          update={update}
+          onUpdateCheck={() => void bridge.updateCheck().then(setUpdate)}
+          onUpdateDownload={() => void bridge.updateDownload()}
+          onUpdateInstall={() => void bridge.updateInstall()}
         />
       )}
       {toast && (

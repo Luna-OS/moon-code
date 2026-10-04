@@ -72,6 +72,7 @@ export function ActivityBar({
   onClaude,
   onAccount,
   onSettings,
+  updateReady = false,
 }: {
   view: SideView | null;
   claudeOpen: boolean;
@@ -80,6 +81,8 @@ export function ActivityBar({
   onClaude: () => void;
   onAccount: () => void;
   onSettings: () => void;
+  /** A new Moon Code is out: a dot on the settings button. */
+  updateReady?: boolean;
 }) {
   const item = (v: SideView, label: string, icon: ReactNode, keys: string) => (
     <button
@@ -124,11 +127,14 @@ export function ActivityBar({
       <button
         type="button"
         className="mc-activity"
-        aria-label="Settings"
-        title="Settings"
+        aria-label={updateReady ? "Settings – an update is ready" : "Settings"}
+        title={updateReady ? "Settings – a new Moon Code is out" : "Settings"}
         onClick={onSettings}
       >
         <SettingsIcon />
+        {updateReady && (
+          <span className="mc-activity-badge" style={{ background: "var(--color-lavender-300)" }} />
+        )}
       </button>
     </nav>
   );

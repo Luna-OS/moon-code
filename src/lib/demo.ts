@@ -14,6 +14,7 @@ import type {
   SearchOptions,
   Settings,
   SysInfo,
+  UpdateStatus,
 } from "./types";
 
 /*
@@ -63,6 +64,7 @@ const DEFAULT_SETTINGS: Settings = {
     },
   ],
   mascot: true,
+  autoUpdateCheck: true,
   fontSize: 14,
   wordWrap: false,
   minimap: true,
@@ -400,7 +402,49 @@ export class DemoBridge implements MoonCodeBridge {
     return Promise.resolve({ source: "api" as const, repos: REPOS });
   }
   githubClone(_url: string, name: string) {
+    this.cloned.push(name);
     return Promise.resolve(join("/home/luna/Moon Code Projects", name));
+  }
+  /** Repositories cloned in this demo (for the tests). */
+  cloned: string[] = [];
+
+  // A pretend update: 0.2.0 is out, downloads in a few steps, restarts on install.
+  private update: UpdateStatus = { state: "idle", current: "0.1.0" };
+  private setUpdate(u: Partial<UpdateStatus>) {
+    this.update = { current: "0.1.0", ...u } as UpdateStatus;
+    this.emit("update:status", this.update);
+  }
+  updateState() {
+    return Promise.resolve(this.update);
+  }
+  updateCheck() {
+    this.setUpdate({ state: "checking" });
+    this.setUpdate({
+      state: "available",
+      version: "0.2.0",
+      notes: "Your repositories in Cloud, and updates right inside Moon Code.",
+      checkedAt: now(),
+    });
+    return Promise.resolve(this.update);
+  }
+  updateDownload() {
+    const { version, notes } = this.update;
+    [25, 60, 100].forEach((percent, i) =>
+      setTimeout(
+        () =>
+          this.setUpdate(
+            percent < 100
+              ? { state: "downloading", version, notes, percent }
+              : { state: "ready", version, notes, percent },
+          ),
+        20 * (i + 1),
+      ),
+    );
+    this.setUpdate({ state: "downloading", version, notes, percent: 0 });
+    return Promise.resolve(this.update);
+  }
+  updateInstall() {
+    return Promise.resolve(this.update.state === "ready");
   }
 }
 

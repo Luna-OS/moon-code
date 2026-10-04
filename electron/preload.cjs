@@ -9,7 +9,7 @@ async function call(channel, ...args) {
   return { __envelope: true, ...res };
 }
 
-const EVENTS = new Set(["terminal:data", "terminal:exit", "claude:event"]);
+const EVENTS = new Set(["terminal:data", "terminal:exit", "claude:event", "update:status"]);
 
 contextBridge.exposeInMainWorld("moonCode", {
   kind: "electron",
@@ -53,6 +53,11 @@ contextBridge.exposeInMainWorld("moonCode", {
   githubAccount: () => call("github:account"),
   githubRepos: () => call("github:repos"),
   githubClone: (cloneUrl, name) => call("github:clone", cloneUrl, name),
+
+  updateState: () => call("update:state"),
+  updateCheck: () => call("update:check"),
+  updateDownload: () => call("update:download"),
+  updateInstall: () => call("update:install"),
 
   on(channel, fn) {
     if (!EVENTS.has(channel)) throw new Error(`Unknown event ${channel}`);

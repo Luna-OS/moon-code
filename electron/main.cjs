@@ -14,6 +14,7 @@ const { accountStatus } = require("./claude/account.cjs");
 const { listProjects, listSessions } = require("./claude/projects.cjs");
 const { ChatManager } = require("./claude/chat.cjs");
 const { createLineParser } = require("./claude/events.cjs");
+const { createUpdater } = require("./updater.cjs");
 
 const ROOT = path.join(__dirname, "..");
 const BUILD = path.join(ROOT, "build");
@@ -37,6 +38,14 @@ const terminals = new Terminals(send);
 const chats = new ChatManager((chatId, event) => {
   if (event.kind === "rate-limit") settings.set({ lastRateLimit: { ...event, at: Date.now() } });
   send("claude:event", { chatId, event });
+});
+
+// electron-updater only loads in the packaged app; in development there is nothing to update.
+const updater = createUpdater({
+  autoUpdater: app.isPackaged ? require("electron-updater").autoUpdater : null,
+  currentVersion: app.getVersion(),
+  packaged: app.isPackaged,
+  send: (status) => send("update:status", status),
 });
 
 const claudeExe = () => findClaude(settings.get().claudePath);
@@ -207,10 +216,20 @@ handle("github:clone", (_e, cloneUrl, name) =>
   github.clone(cloneUrl, settings.get().projectsFolder, name),
 );
 
+// Updates
+handle("update:state", () => updater.get());
+handle("update:check", () => updater.check());
+handle("update:download", () => updater.download());
+handle("update:install", () => updater.install());
+
 // ---------------------------------------------------------------- app
 
 Menu.setApplicationMenu(null);
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  // A quiet look for a new version a little after the start (Settings → Updates can switch it off).
+  if (settings.get().autoUpdateCheck !== false) setTimeout(() => void updater.check(), 8000);
+});
 app.on("window-all-closed", () => {
   chats.stopAll();
   terminals.killAll();

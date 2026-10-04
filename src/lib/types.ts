@@ -47,6 +47,8 @@ export interface Settings {
   cloudTasks: CloudTask[];
   /** Show Axo, the axolotl, in the Claude panel. */
   mascot: boolean;
+  /** Look for a new Moon Code on GitHub at every start. */
+  autoUpdateCheck: boolean;
   fontSize: number;
   wordWrap: boolean;
   minimap: boolean;
@@ -175,10 +177,25 @@ export type ClaudeEvent =
   | { kind: "error"; message: string }
   | { kind: "exit"; code: number | null; stderr: string };
 
+/** Where Moon Code's updater is (electron/updater.cjs). */
+export interface UpdateStatus {
+  state:
+    "idle" | "checking" | "available" | "none" | "downloading" | "ready" | "error" | "unsupported";
+  /** The running version. */
+  current: string;
+  /** The new version, when there is one. */
+  version?: string;
+  notes?: string;
+  percent?: number;
+  error?: string;
+  checkedAt?: number;
+}
+
 export interface BridgeEvents {
   "terminal:data": { id: string; data: string };
   "terminal:exit": { id: string; code: number };
   "claude:event": { chatId: string; event: ClaudeEvent };
+  "update:status": UpdateStatus;
 }
 
 export interface MoonCodeBridge {
@@ -227,6 +244,12 @@ export interface MoonCodeBridge {
   githubAccount(): Promise<GitHubAccount>;
   githubRepos(): Promise<{ source: "gh" | "api" | "none"; repos: Repo[] }>;
   githubClone(cloneUrl: string, name: string): Promise<string>;
+
+  updateState(): Promise<UpdateStatus>;
+  updateCheck(): Promise<UpdateStatus>;
+  updateDownload(): Promise<UpdateStatus>;
+  /** Restarts into the downloaded version; false when none is ready. */
+  updateInstall(): Promise<boolean>;
 
   on<K extends keyof BridgeEvents>(channel: K, fn: (data: BridgeEvents[K]) => void): () => void;
 }

@@ -33,8 +33,10 @@ Moon Code signs in to GitHub through the official GitHub CLI, so it never sees a
 
 ## Cloud
 
-The **Cloud** view hands work to Claude Code on the web. It needs your Claude account, your GitHub
-account and a folder whose `origin` is a GitHub repository (the first time, claude.ai/code asks to
+The **Cloud** view hands work to Claude Code on the web. It needs your Claude account and your GitHub
+account, and lists your repositories: the open folder's is picked to begin with, and any other can
+be picked instead – Moon Code clones it into the projects folder first (once), because
+`claude --cloud` works on the repository of the folder it runs in (the first time, claude.ai/code asks to
 connect the repository through Claude's GitHub app). Every action runs your Claude Code in a
 terminal tab:
 
