@@ -7,7 +7,8 @@ import { fileURLToPath, URL } from "node:url";
 /**
  * The desktop app loads the built page from disk, so the production build gets a strict Content
  * Security Policy. Monaco runs its language services in workers (blob: for the bundled ones) and
- * styles itself inline. (The dev server needs inline scripts for hot reload, so it stays without
+ * styles itself inline. The file viewers show pictures, PDFs, sound and video from moon-file:
+ * (electron/main.cjs). (The dev server needs inline scripts for hot reload, so it stays without
  * one.)
  */
 function contentSecurityPolicy(): Plugin {
@@ -16,7 +17,9 @@ function contentSecurityPolicy(): Plugin {
     "script-src 'self'",
     "worker-src 'self' blob:",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
+    "img-src 'self' data: blob: moon-file:",
+    "media-src 'self' moon-file:",
+    "frame-src 'self' moon-file:",
     "font-src 'self' data:",
     "object-src 'none'",
     "connect-src 'self'",

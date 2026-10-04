@@ -28,6 +28,8 @@ const DEFAULTS = {
   cloudTasks: [],
   /** Show Axo, the axolotl, in the Claude panel. */
   mascot: true,
+  /** Save changed files by themselves a second after the last change. */
+  autoSave: false,
   /** Look for a new Moon Code on GitHub at every start. */
   autoUpdateCheck: true,
   fontSize: 14,

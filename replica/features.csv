@@ -31,3 +31,11 @@ Plan usage tab with live updates and pace warning,ai,should,yes,yes,claude -p /u
 Account menu with language help upgrade and API key,ai,should,yes,yes,claude.ai pages open in the web tab
 Skills view: list create install from GitHub and use,ai,should,yes,yes,~/.claude/skills and .claude/skills
 Attach pictures and files to a message,ai,should,yes,yes,paperclip drop and paste; images inline
+View pictures PDFs audio and video,editor,should,yes,yes,moon-file protocol and Chromium's PDF viewer
+Hex view for binary files,editor,could,yes,yes,first 64 KB
+Markdown preview,editor,should,yes,yes,rendered from marked tokens as React elements
+Open file dialog and drag and drop,editor,must,yes,yes,
+New untitled file and save as,editor,must,yes,yes,
+Save all and auto save,editor,should,yes,yes,
+Reopen closed editor,editor,could,yes,yes,Ctrl+Shift+T
+Reload files changed on disk,editor,should,yes,yes,asks when there are unsaved changes

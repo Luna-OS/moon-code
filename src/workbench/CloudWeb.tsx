@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertIcon, BackIcon, CloudIcon, ExternalIcon, ReloadIcon } from "../theme/icons";
 import { pageScript } from "./cloud-page";
+import { AXOLOTL_FRAMES } from "../mascot/frames";
+import { toRects } from "../mascot/pixels";
+
+/** Axo's pixels for the page (claude.ai's mascot becomes Axo). */
+const AXO = toRects(AXOLOTL_FRAMES.idle[0]).map(
+  (r) => [r.x, r.y, r.w, r.fill] as [number, number, number, string],
+);
 
 /** The <webview> methods and events the cloud tab uses. */
 interface WebviewElement extends HTMLElement {
@@ -65,7 +72,7 @@ export function CloudWeb({
   const tune = useCallback(() => {
     const view = ref.current;
     if (!view || !ready.current) return;
-    view.executeJavaScript(pageScript({ theme: themeRef.current })).catch(() => {});
+    view.executeJavaScript(pageScript({ theme: themeRef.current, axo: AXO })).catch(() => {});
   }, []);
   useEffect(() => tune(), [theme, tune]);
   // claude.ai builds its pages bit by bit: look again every few seconds while the tab is shown.

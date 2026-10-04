@@ -1,6 +1,8 @@
 import type {
   Attachment,
   BridgeEvents,
+  FileInfo,
+  FileKind,
   ChatStartOptions,
   ClaudeAccount,
   ClaudeEvent,
@@ -70,6 +72,7 @@ const DEFAULT_SETTINGS: Settings = {
     },
   ],
   mascot: true,
+  autoSave: false,
   autoUpdateCheck: true,
   fontSize: 14,
   wordWrap: false,
@@ -197,6 +200,57 @@ export class DemoBridge implements MoonCodeBridge {
         .sort((a, b) => (a.isDir !== b.isDir ? (a.isDir ? -1 : 1) : a.name.localeCompare(b.name))),
     );
   }
+  fileInfo(file: string): Promise<FileInfo> {
+    const ext = file.split(".").pop()?.toLowerCase() ?? "";
+    const kind: FileKind = ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)
+      ? "image"
+      : ext === "pdf"
+        ? "pdf"
+        : ["mp3", "wav", "ogg"].includes(ext)
+          ? "audio"
+          : ["mp4", "webm"].includes(ext)
+            ? "video"
+            : ext === "bin" || ext === "exe"
+              ? "binary"
+              : "text";
+    if (kind === "text" && !this.files.has(file) && !this.skills.some((s) => s.file === file)) {
+      return Promise.reject(new Error(`${file} doesn't exist.`));
+    }
+    return Promise.resolve({
+      kind,
+      size: this.files.get(file)?.length ?? 2048,
+      mtime: this.mtimes.get(file) ?? 1,
+    });
+  }
+  /** Changes a file "on disk", as Claude would (for the tests). */
+  touch(file: string, text: string) {
+    this.files.set(file, text);
+    this.mtimes.set(file, (this.mtimes.get(file) ?? 1) + 1);
+  }
+  private mtimes = new Map<string, number>();
+  statFiles(files: string[]) {
+    return Promise.resolve(
+      Object.fromEntries(
+        files.map((f) => [f, this.files.has(f) ? (this.mtimes.get(f) ?? 1) : null]),
+      ),
+    );
+  }
+  readBytes(_file: string) {
+    return Promise.resolve({ data: "TW9vbgBDb2RlAQID", size: 12 });
+  }
+  /** What the next "Open file…" dialog picks (for the tests). */
+  nextPicked: string[] = [];
+  pickFiles() {
+    return Promise.resolve(this.nextPicked);
+  }
+  /** Where the next "Save as…" dialog saves (for the tests). */
+  nextSaveAs: string | null = null;
+  saveAsDialog() {
+    return Promise.resolve(this.nextSaveAs);
+  }
+  pathForFile() {
+    return null;
+  }
   readFile(file: string) {
     const skill = this.skills.find((s) => s.file === file);
     const c =
@@ -209,7 +263,7 @@ export class DemoBridge implements MoonCodeBridge {
       : Promise.resolve(c);
   }
   writeFile(file: string, content: string) {
-    this.files.set(file, content);
+    this.touch(file, content);
     return Promise.resolve();
   }
   createFile(file: string) {

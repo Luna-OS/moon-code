@@ -12,7 +12,9 @@ const {
   net,
   session,
   nativeTheme,
+  protocol,
 } = require("electron");
+const { pathToFileURL } = require("url");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -41,6 +43,19 @@ const FRAME = {
 const TITLE_BAR_HEIGHT = 40;
 
 app.setName("Moon Code");
+// moon-file://local/<path>: pictures, PDFs, sound and video of the open files, for the viewers.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "moon-file",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true,
+    },
+  },
+]);
 const settings = new Settings(path.join(app.getPath("userData"), "settings.json"));
 
 /** @type {BrowserWindow | null} */
@@ -98,6 +113,8 @@ function createWindow() {
       spellcheck: false,
       // The cloud tab: claude.ai/code in a <webview> (see guardWebviews).
       webviewTag: true,
+      // Chromium's PDF viewer, for PDF files opened in the editor.
+      plugins: true,
     },
   });
   guardWebviews(mainWindow);
@@ -219,7 +236,20 @@ handle("dialog:pickFolder", async () => {
 });
 handle("folder:opened", (_e, folder) => settings.addRecent(folder));
 handle("fs:readDir", (_e, dir) => workspace.readDir(dir));
-handle("fs:readFile", (_e, file) => workspace.readFile(file));
+handle("fs:readFile", (_e, file, opts) => workspace.readFile(file, opts));
+handle("fs:info", (_e, file) => workspace.fileInfo(file));
+handle("fs:readBytes", (_e, file, max) => workspace.readBytes(file, max));
+handle("fs:stat", (_e, files) => workspace.statFiles(files));
+handle("dialog:openFiles", async () => {
+  const res = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openFile", "multiSelections"],
+  });
+  return res.canceled ? [] : res.filePaths;
+});
+handle("dialog:saveAs", async (_e, suggested) => {
+  const res = await dialog.showSaveDialog(mainWindow, { defaultPath: suggested || undefined });
+  return res.canceled || !res.filePath ? null : res.filePath;
+});
 handle("fs:writeFile", (_e, file, content) => workspace.writeFile(file, content));
 handle("fs:createFile", (_e, file) => workspace.createFile(file));
 handle("fs:createFolder", (_e, dir) => workspace.createFolder(dir));
@@ -353,6 +383,14 @@ handle("update:install", () => updater.install());
 
 Menu.setApplicationMenu(null);
 app.whenReady().then(() => {
+  // The viewers' files come from the disk as they are; only the workbench's own session has this.
+  protocol.handle("moon-file", (request) => {
+    const url = new URL(request.url);
+    const file = decodeURIComponent(url.pathname.replace(/^\//, ""));
+    // Only the range goes on (sound and video seek with it); other headers trip file:// up.
+    const range = request.headers.get("range");
+    return net.fetch(pathToFileURL(file).toString(), range ? { headers: { Range: range } } : {});
+  });
   createWindow();
   attachments.pruneAttachments(ATTACHMENTS);
   // A quiet look for a new version a little after the start (Settings → Updates can switch it off).

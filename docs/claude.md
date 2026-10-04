@@ -44,6 +44,12 @@ navigation, sessions and composer – no browser, no Claude app.
   lavender, other colours (green, blue, red) stay. It runs again when stylesheets change and every
   few seconds while the tab is shown; the page's light or dark mode follows Moon Code
   (`nativeTheme.themeSource`).
+- **Axo instead of Clawd.** The same script swaps claude.ai's mascot – an `<svg>` drawn mostly in
+  the clay orange, or a picture named like it – for Axo, built rect by rect with DOM calls (no
+  HTML parsing, which claude.ai's Trusted Types may forbid), and turns other orange drawings
+  lavender. A `MutationObserver` does it again when the page draws them anew.
+- **Stars.** At night a fixed layer of Moon Code's stars lies over the page with
+  `mix-blend-mode: screen`, so it only shows on the dark surfaces.
 - **No browser chrome.** A Moon header with a reload button; only when the page can't load does it
   offer the browser.
 - **Sign-in stays.** The tab has its own browser session (`persist:claude-web`): sign in to

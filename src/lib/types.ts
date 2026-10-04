@@ -87,11 +87,21 @@ export interface Settings {
   cloudTasks: CloudTask[];
   /** Show Axo, the axolotl, in the Claude panel. */
   mascot: boolean;
+  /** Save changed files by themselves a second after the last change. */
+  autoSave: boolean;
   /** Look for a new Moon Code on GitHub at every start. */
   autoUpdateCheck: boolean;
   fontSize: number;
   wordWrap: boolean;
   minimap: boolean;
+}
+
+export type FileKind = "text" | "image" | "pdf" | "audio" | "video" | "binary";
+
+export interface FileInfo {
+  kind: FileKind;
+  size: number;
+  mtime: number;
 }
 
 export interface DirEntry {
@@ -270,7 +280,20 @@ export interface MoonCodeBridge {
   pickFolder(): Promise<string | null>;
   folderOpened(folder: string): Promise<Settings>;
   readDir(dir: string): Promise<DirEntry[]>;
-  readFile(file: string): Promise<string>;
+  /** A text file; a large one only with `force` (ETOOLARGE otherwise), a binary never. */
+  readFile(file: string, opts?: { force?: boolean }): Promise<string>;
+  /** How a file opens: as text, with a viewer, or as bytes. */
+  fileInfo(file: string): Promise<FileInfo>;
+  /** The first bytes of a file, base64 (the hex view). */
+  readBytes(file: string, max?: number): Promise<{ data: string; size: number }>;
+  /** Modification times (ms; null for a file that is gone). */
+  statFiles(files: string[]): Promise<Record<string, number | null>>;
+  /** Files picked in the system dialog. */
+  pickFiles(): Promise<string[]>;
+  /** Where to save a file (system dialog), or null. */
+  saveAsDialog(suggested?: string): Promise<string | null>;
+  /** The path of a file dropped on the window, when it has one. */
+  pathForFile(file: File): string | null;
   writeFile(file: string, content: string): Promise<void>;
   createFile(file: string): Promise<void>;
   createFolder(dir: string): Promise<void>;

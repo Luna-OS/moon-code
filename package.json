@@ -1,7 +1,7 @@
 {
   "name": "moon-code",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Moon Code – a code editor under the night sky, with Claude Code built in.",
   "license": "MIT",
   "type": "module",
@@ -52,6 +52,7 @@
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.13.0",
     "jsdom": "^30.1.1",
+    "marked": "^16.4.2",
     "monaco-editor": "^0.57.0",
     "prettier": "^3.9.9",
     "react": "^19.3.0",

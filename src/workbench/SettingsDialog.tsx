@@ -110,6 +110,14 @@ export function SettingsDialog({
             checked={settings.wordWrap}
             onChange={(e) => onChange({ wordWrap: e.target.checked })}
           />
+          <label htmlFor="mc-autosave">Save files by themselves</label>
+          <input
+            id="mc-autosave"
+            type="checkbox"
+            className="mc-switch"
+            checked={Boolean(settings.autoSave)}
+            onChange={(e) => onChange({ autoSave: e.target.checked })}
+          />
           <label htmlFor="mc-mascot">Axo, the axolotl, in the Claude panel</label>
           <input
             id="mc-mascot"
