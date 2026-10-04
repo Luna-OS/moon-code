@@ -56,8 +56,14 @@ contextBridge.exposeInMainWorld("moonCode", {
   claudeSend: (chatId, text) => call("claude:send", chatId, text),
   claudeStop: (chatId) => call("claude:stop", chatId),
   claudeCheckLimits: () => call("claude:checkLimits"),
+  claudeUsage: () => call("claude:usage"),
 
   cloudSend: (ref, message) => call("cloud:send", ref, message),
+
+  skillsList: (project) => call("skills:list", project),
+  skillsCreate: (opts) => call("skills:create", opts),
+  skillsInstall: (repo) => call("skills:install", repo),
+  skillsRemove: (dir, project) => call("skills:remove", dir, project),
 
   githubAccount: () => call("github:account"),
   githubRepos: () => call("github:repos"),

@@ -72,6 +72,40 @@ claude.ai/code opens as a tab next to your files (`src/workbench/CloudWeb.tsx`, 
   don't know. If Google's sign-in still refuses, sign in with your email address.
 - "Browser" in the tab's toolbar opens the page in your browser after all.
 
+## Usage
+
+The **Usage** tab (account menu → Usage, or "Claude: Show usage") shows the plan's usage like
+the Claude app: the current 5-hour session, the week, the weekly per-model windows and the extra
+usage, with a warning when the pace since the window started runs out before its reset
+(`src/lib/usage.ts`).
+
+- The numbers come from Claude Code's own `/usage` (`claude -p /usage --output-format stream-json
+  --verbose --no-session-persistence --strict-mcp-config`, `electron/claude/usage.cjs`), which
+  reads them from claude.ai without asking the model, so it costs no usage. Moon Code asks every
+  30 seconds while the Usage tab is in front, every 3 minutes otherwise, and when the window comes
+  back to the front.
+- Every answer in the Claude panel carries the limits too (`rate_limit_event`), so they move while
+  Claude works.
+- When `/usage` has no plan numbers (an older Claude Code), the tab uses the limits from the
+  answers and checks them itself every 10 minutes while it is open (one tiny Haiku message).
+- "Upgrade plan", "Buy more usage" and "Manage" open claude.ai's pages in Moon Code's web tab.
+
+## Account menu
+
+The person at the bottom of the activity bar opens the menu of the Claude app: Usage, Claude's
+language (added to the chat as `--append-system-prompt "Always answer the user in <language>…"`),
+Help, Upgrade plan, Get apps and extensions, What's new, Learn more, Get an API key and Sign out.
+claude.ai pages open in the web tab, the rest in the browser.
+
+## Skills
+
+The **Skills** view (`electron/claude/skills.cjs`) lists the open project's skills
+(`.claude/skills`) and your personal ones (`~/.claude/skills`) with the name and description from
+each SKILL.md. "+" makes a new skill with a SKILL.md to fill in; "Install from GitHub" clones a
+repository (shallow, into a temporary folder) and copies every folder with a SKILL.md into
+`~/.claude/skills`; "Use" puts `/name` into the message to Claude; "Remove" moves a skill to the
+recycle bin.
+
 ## Axo
 
 Axo, the white pixel axolotl in the Claude panel, shows what Claude is up to: asleep (not signed

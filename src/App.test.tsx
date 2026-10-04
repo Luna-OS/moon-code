@@ -41,9 +41,10 @@ describe("Moon Code", () => {
     const claude = await screen.findByRole("complementary", { name: "Claude" });
     expect(await within(claude).findByText("luna@example.com")).toBeInTheDocument();
     expect(within(claude).getByText("Max")).toBeInTheDocument();
-    expect(within(claude).getByText("48 %")).toBeInTheDocument();
-    expect(within(claude).getByText("66 %")).toBeInTheDocument();
-    expect(screen.getByText("5h 48 %")).toBeInTheDocument();
+    // The last known limits first, then the live numbers from Claude Code's /usage.
+    expect(await within(claude).findByText("44 %")).toBeInTheDocument();
+    expect(within(claude).getByText("79 %")).toBeInTheDocument();
+    expect(screen.getByText("5h 44 %")).toBeInTheDocument();
   });
 
   it("opens a file in a tab", async () => {
@@ -276,6 +277,107 @@ describe("Moon Code", () => {
     expect(await screen.findByLabelText("Address")).toHaveTextContent(
       "claude.ai/code/session_01PastedLink",
     );
+  });
+
+  it("shows the usage from the account menu, and keeps it up to date by itself", async () => {
+    const bridge = new DemoBridge();
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await user.click(await screen.findByRole("button", { name: "Claude account" }));
+    const menu = screen.getByRole("menu", { name: "Claude account" });
+    await user.click(within(menu).getByRole("menuitem", { name: "Usage" }));
+    expect(screen.queryByRole("menu", { name: "Claude account" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: /Usage/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(await screen.findByText("Current session")).toBeInTheDocument();
+    expect(screen.getByText("This week")).toBeInTheDocument();
+    expect(screen.getByText("This week · Sonnet")).toBeInTheDocument();
+    expect(screen.getByText("79 % used")).toBeInTheDocument();
+    // 79 % with half the week to go runs out early: the warning says so.
+    expect(screen.getByText(/at this pace you'll run out/)).toBeInTheDocument();
+    expect(screen.getByText(/€0.00 of €40.00/)).toBeInTheDocument();
+    // The current session (the first row) creeps up in the demo each time it is asked for.
+    const session = Number.parseInt(screen.getAllByText(/ % used$/)[0].textContent ?? "", 10);
+    expect(session).toBeGreaterThanOrEqual(44);
+    // No refresh button: the numbers come again on their own (here: Moon Code comes back to the
+    // front).
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(await screen.findByText(`${session + 1} % used`)).toBeInTheDocument();
+    expect(bridge.usageCalls).toBeGreaterThanOrEqual(2);
+    // Buying more opens claude.ai's page inside Moon Code.
+    await user.click(screen.getByRole("button", { name: "Buy more usage" }));
+    expect(await screen.findByLabelText("Address")).toHaveTextContent("claude.ai/settings/usage");
+    expect(screen.getByRole("tab", { name: /claude\.ai/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("sets the language Claude answers in", async () => {
+    const bridge = new DemoBridge();
+    const start = vi.spyOn(bridge, "claudeStart");
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await user.click(await screen.findByRole("button", { name: "Claude account" }));
+    await user.click(screen.getByRole("menuitem", { name: /Claude's language/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: "German" }));
+    expect(await screen.findByText(/Claude answers in German/)).toBeInTheDocument();
+    expect((await bridge.getSettings()).claudeLanguage).toBe("German");
+    await user.type(await screen.findByLabelText("Message to Claude"), "Hi{Enter}");
+    await waitFor(() => expect(start.mock.calls.at(-1)?.[1].language).toBe("German"));
+  });
+
+  it("+ starts a new conversation, and the last one can be picked again", async () => {
+    const user = userEvent.setup();
+    render(<App bridge={new DemoBridge()} />);
+    await user.type(await screen.findByLabelText("Message to Claude"), "Hi{Enter}");
+    expect(
+      await screen.findByText(/Want me to wire it up/, undefined, { timeout: 4000 }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "New conversation" }));
+    expect(screen.queryByText(/Want me to wire it up/)).not.toBeInTheDocument();
+    expect(screen.getByText(/The last one is under Earlier conversations/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("Message to Claude")).toHaveFocus());
+
+    await user.click(screen.getByRole("button", { name: "Earlier conversations" }));
+    const list = screen.getByRole("menu", { name: "Earlier conversations" });
+    await user.click(
+      await within(list).findByRole("menuitem", { name: /Add a night theme to the installer/ }),
+    );
+    expect(await screen.findByText(/Continuing "Add a night theme/)).toBeInTheDocument();
+  });
+
+  it("lists, makes, installs and uses skills", async () => {
+    const bridge = new DemoBridge();
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await user.click(await screen.findByRole("button", { name: "Skills" }));
+    const personal = await screen.findByRole("region", { name: "Personal" });
+    expect(await within(personal).findByText("replica-recon")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("GitHub repository with skills"), "anthropics/skills");
+    await user.click(screen.getByRole("button", { name: /^Install$/ }));
+    expect(await screen.findByText("Installed the skill skills.")).toBeInTheDocument();
+    expect(await within(personal).findByText("skills")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "New skill" }));
+    await user.type(screen.getByLabelText("Skill name"), "Release notes");
+    await user.type(screen.getByLabelText("Skill description"), "Writes the release notes");
+    await user.click(screen.getByRole("button", { name: "Create and edit" }));
+    expect(
+      await screen.findByLabelText("Editor /home/luna/.claude/skills/release-notes/SKILL.md"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(screen.getByRole("group", { name: "Skill moon-theme" })).getByRole("button", {
+        name: "Use",
+      }),
+    );
+    expect(await screen.findByLabelText("Message to Claude")).toHaveValue("/moon-theme ");
   });
 
   it("finds, downloads and installs an update from Settings", async () => {

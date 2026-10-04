@@ -584,6 +584,93 @@ body {
   .mc-meter[data-tone="warning"] > span {
     background: linear-gradient(90deg, #d9a640, var(--color-warning-400));
   }
+  .mc-meter[data-tone="danger"] > span {
+    background: linear-gradient(90deg, #d9505a, var(--mc-danger));
+  }
+  /* The Usage tab's bars are a little thicker and move when the numbers do. */
+  .mc-meter-lg {
+    height: 0.45rem;
+  }
+  .mc-meter-lg > span {
+    transition: width 600ms ease;
+  }
+
+  /* "Live": a small dot that breathes. */
+  .mc-live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--mc-success);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--mc-success) 60%, transparent);
+    animation: mc-live 2s ease-out infinite;
+  }
+  @keyframes mc-live {
+    70% {
+      box-shadow: 0 0 0 6px transparent;
+    }
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mc-live-dot,
+    .mc-meter-lg > span {
+      animation: none;
+      transition: none;
+    }
+  }
+
+  /* A text button that looks like a link. */
+  .mc-link {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--mc-accent);
+    font: inherit;
+    cursor: pointer;
+  }
+  .mc-link:hover {
+    text-decoration: underline;
+  }
+
+  /* Menus (the account menu). */
+  .mc-menu-item {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--mc-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mc-menu-item:hover,
+  .mc-menu-item:focus-visible {
+    background: var(--mc-hover);
+    outline: none;
+  }
+  .mc-menu-item[aria-checked="true"] {
+    color: var(--mc-accent);
+    font-weight: 600;
+  }
+  .mc-menu-sub {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    margin: 0 0 0.25rem 0.6rem;
+    padding-left: 0.4rem;
+    border-left: 1px solid var(--mc-border);
+  }
+  .mc-menu-sep {
+    height: 1px;
+    margin: 0.3rem 0.4rem;
+    background: var(--mc-border);
+  }
 
   /* A switch: a checkbox that looks like a small moon sliding along. */
   .mc-switch {
@@ -635,6 +722,7 @@ body {
   /* Items of a context menu (Moon Browser's menu rows). */
   .mc-menu-item {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     gap: 0.6rem;
     height: 2rem;

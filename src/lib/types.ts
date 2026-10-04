@@ -32,6 +32,44 @@ export interface RateLimit {
   at?: number;
 }
 
+/** One usage window of the plan for a model ("Opus"…). */
+export interface ModelWindow extends RateWindow {
+  name: string;
+}
+
+/** The plan's usage from Claude Code's `/usage` (electron/claude/usage.cjs). */
+export interface PlanUsage {
+  /** False when plan limits don't apply (an API key…). */
+  available: boolean;
+  /** "pro", "max", "team"… */
+  plan: string | null;
+  session?: RateWindow | null;
+  week?: RateWindow | null;
+  models?: ModelWindow[];
+  /** Extra usage (credits) past the plan; amounts in cents. */
+  extra?: {
+    enabled: boolean;
+    limit: number | null;
+    used: number | null;
+    utilization: number | null;
+    currency: string | null;
+  } | null;
+  at: number;
+}
+
+/** A Claude Code skill: a folder with a SKILL.md (electron/claude/skills.cjs). */
+export interface Skill {
+  name: string;
+  /** The folder's name. */
+  folder: string;
+  description: string;
+  dir: string;
+  /** Its SKILL.md. */
+  file: string;
+  /** "personal": ~/.claude/skills; "project": the open folder's .claude/skills. */
+  scope: "personal" | "project";
+}
+
 export interface Settings {
   theme: ThemeSetting;
   lastFolder: string | null;
@@ -42,6 +80,8 @@ export interface Settings {
   claudeModel: string | null;
   claudePermissionMode: PermissionMode;
   claudeEffort: Effort | null;
+  /** The language Claude answers in ("German"…; null: the user's own). */
+  claudeLanguage: string | null;
   lastRateLimit: RateLimit | null;
   /** The cloud tasks started from Moon Code, newest first. */
   cloudTasks: CloudTask[];
@@ -153,6 +193,8 @@ export interface ChatStartOptions {
   effort?: Effort | null;
   resume?: string | null;
   allowedTools?: string[];
+  /** The language Claude answers in. */
+  language?: string | null;
 }
 
 /** What electron/claude/events.cjs makes of Claude Code's output. */
@@ -254,9 +296,25 @@ export interface MoonCodeBridge {
   claudeSend(chatId: string, text: string): Promise<boolean>;
   claudeStop(chatId: string): Promise<void>;
   claudeCheckLimits(): Promise<RateLimit | null>;
+  /** The plan's usage from `/usage` (no cost), or null when Claude Code has no plan numbers. */
+  claudeUsage(): Promise<PlanUsage | null>;
 
   /** Queues `message` into a cloud session (`claude -p … --cloud <ref>`). */
   cloudSend(ref: string, message: string): Promise<CloudSent>;
+
+  /** The open project's skills and the personal ones. */
+  skillsList(project: string | null): Promise<Skill[]>;
+  /** Makes a new skill; resolves to its SKILL.md. */
+  skillsCreate(opts: {
+    name: string;
+    description: string;
+    scope: "personal" | "project";
+    project: string | null;
+  }): Promise<string>;
+  /** Installs a GitHub repository's skills as personal ones; resolves to their folder names. */
+  skillsInstall(repo: string): Promise<string[]>;
+  /** Moves a skill folder to the recycle bin. */
+  skillsRemove(dir: string, project: string | null): Promise<void>;
 
   githubAccount(): Promise<GitHubAccount>;
   githubRepos(): Promise<{ source: "gh" | "api" | "none"; repos: Repo[] }>;

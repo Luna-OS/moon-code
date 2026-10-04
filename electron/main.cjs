@@ -12,6 +12,8 @@ const github = require("./github.cjs");
 const { findClaude, runClaude } = require("./claude/cli.cjs");
 const { accountStatus } = require("./claude/account.cjs");
 const { listProjects, listSessions } = require("./claude/projects.cjs");
+const { USAGE_ARGS, parseUsage } = require("./claude/usage.cjs");
+const skills = require("./claude/skills.cjs");
 const { ChatManager } = require("./claude/chat.cjs");
 const { createLineParser } = require("./claude/events.cjs");
 const { createUpdater } = require("./updater.cjs");
@@ -286,6 +288,37 @@ handle("cloud:send", async (_e, ref, message) => {
     await runClaude(exe, cloud.followUpArgs(id, message), { timeoutMs: 120_000 }),
   );
 });
+
+/**
+ * The plan's usage from Claude Code's `/usage` (runs locally, costs no usage), or null when it
+ * has no plan numbers. The 5-hour and weekly windows also become the last known limits.
+ */
+handle("claude:usage", async () => {
+  const exe = claudeExe();
+  if (!exe) return null;
+  const res = await runClaude(exe, USAGE_ARGS, { timeoutMs: 30_000 });
+  const usage = parseUsage(res.stdout);
+  if (usage && usage.available && (usage.session || usage.week)) {
+    const prev = settings.get().lastRateLimit || {};
+    settings.set({
+      lastRateLimit: {
+        status: prev.status ?? null,
+        type: prev.type ?? null,
+        usingOverage: prev.usingOverage ?? false,
+        fiveHour: usage.session,
+        sevenDay: usage.week,
+        at: usage.at,
+      },
+    });
+  }
+  return usage;
+});
+
+// Skills
+handle("skills:list", (_e, project) => skills.listSkills(project));
+handle("skills:create", (_e, opts) => skills.createSkill(opts));
+handle("skills:install", (_e, repo) => skills.installFromGitHub(repo));
+handle("skills:remove", (_e, dir, project) => shell.trashItem(skills.skillFolder(dir, project)));
 
 // Projects on GitHub
 handle("github:account", () => github.account((url, opts) => net.fetch(url, opts)));

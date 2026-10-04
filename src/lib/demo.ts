@@ -15,6 +15,8 @@ import type {
   Settings,
   SysInfo,
   UpdateStatus,
+  PlanUsage,
+  Skill,
 } from "./types";
 
 /*
@@ -48,6 +50,7 @@ const DEFAULT_SETTINGS: Settings = {
   claudeModel: null,
   claudePermissionMode: "acceptEdits",
   claudeEffort: null,
+  claudeLanguage: null,
   lastRateLimit: {
     status: "allowed",
     type: "five_hour",
@@ -194,7 +197,12 @@ export class DemoBridge implements MoonCodeBridge {
     );
   }
   readFile(file: string) {
-    const c = this.files.get(file);
+    const skill = this.skills.find((s) => s.file === file);
+    const c =
+      this.files.get(file) ??
+      (skill
+        ? `---\nname: ${skill.name}\ndescription: ${skill.description}\n---\n\n# ${skill.name}\n`
+        : undefined);
     return c === undefined
       ? Promise.reject(new Error(`${file} doesn't exist.`))
       : Promise.resolve(c);
@@ -386,6 +394,21 @@ export class DemoBridge implements MoonCodeBridge {
   claudeCheckLimits() {
     return Promise.resolve(this.settings.lastRateLimit);
   }
+  /** How often the usage was asked for (it creeps up a little each time, as if Claude worked). */
+  usageCalls = 0;
+  claudeUsage(): Promise<PlanUsage | null> {
+    this.usageCalls += 1;
+    const session = Math.min(1, 0.44 + 0.01 * (this.usageCalls - 1));
+    return Promise.resolve({
+      available: true,
+      plan: "pro",
+      session: { utilization: session, resetsAt: now() + 2.4 * HOUR },
+      week: { utilization: 0.79, resetsAt: now() + 3.2 * 24 * HOUR },
+      models: [{ name: "Sonnet", utilization: 0.31, resetsAt: now() + 3.2 * 24 * HOUR }],
+      extra: { enabled: false, limit: 4000, used: 0, utilization: 0, currency: "EUR" },
+      at: now(),
+    });
+  }
 
   /** For the tests: start signed out of GitHub. */
   signOutOfGitHub() {
@@ -414,6 +437,74 @@ export class DemoBridge implements MoonCodeBridge {
       url: `https://claude.ai/code/${ref}`,
     });
   }
+  /** The demo's skills (personal ones live in ~/.claude/skills). */
+  skills: Skill[] = [
+    ["replica-recon", "Maps an app before cloning it: screens, features and the feature matrix."],
+    ["replica-test", "Runs the parity checks of a Replica clone against its feature matrix."],
+    ["moon-theme", "Keeps a Luna-OS Moon app in the Moon palette: tokens, classes and icons."],
+  ].map(([name, description]) => ({
+    name,
+    folder: name,
+    description,
+    dir: `/home/luna/.claude/skills/${name}`,
+    file: `/home/luna/.claude/skills/${name}/SKILL.md`,
+    scope: "personal" as const,
+  }));
+  skillsList(project: string | null) {
+    return Promise.resolve(
+      this.skills.filter((s) => s.scope === "personal" || (project && s.dir.startsWith(project))),
+    );
+  }
+  skillsCreate(opts: {
+    name: string;
+    description: string;
+    scope: "personal" | "project";
+    project: string | null;
+  }) {
+    const folder = opts.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    const base =
+      opts.scope === "project" && opts.project
+        ? `${opts.project}/.claude/skills`
+        : "/home/luna/.claude/skills";
+    const file = `${base}/${folder}/SKILL.md`;
+    this.skills.push({
+      name: folder,
+      folder,
+      description: opts.description,
+      dir: `${base}/${folder}`,
+      file,
+      scope: opts.scope,
+    });
+    this.files.set(
+      file,
+      `---\nname: ${folder}\ndescription: ${opts.description}\n---\n\n# ${opts.name}\n`,
+    );
+    return Promise.resolve(file);
+  }
+  skillsInstall(repo: string) {
+    const name =
+      repo
+        .split("/")
+        .pop()
+        ?.replace(/\.git$/, "") ?? repo;
+    this.skills.push({
+      name,
+      folder: name,
+      description: `Installed from ${repo}.`,
+      dir: `/home/luna/.claude/skills/${name}`,
+      file: `/home/luna/.claude/skills/${name}/SKILL.md`,
+      scope: "personal",
+    });
+    return Promise.resolve([name]);
+  }
+  skillsRemove(dir: string) {
+    this.skills = this.skills.filter((s) => s.dir !== dir);
+    return Promise.resolve();
+  }
+
   /** Follow-ups sent to cloud sessions in this demo (for the tests). */
   sent: { ref: string; message: string }[] = [];
 
