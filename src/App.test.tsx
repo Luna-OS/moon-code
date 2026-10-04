@@ -148,7 +148,10 @@ describe("Moon Code", () => {
         "Add dark mode to the installer",
       ]);
     });
-    expect(await screen.findByText("Add dark mode to the installer")).toBeInTheDocument();
+    // In "Started from Moon Code", and (once the session's link is in) in the cloud tab's header.
+    expect((await screen.findAllByText("Add dark mode to the installer")).length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("Axo works while Claude works, and cheers when it is done", async () => {
@@ -378,6 +381,45 @@ describe("Moon Code", () => {
       }),
     );
     expect(await screen.findByLabelText("Message to Claude")).toHaveValue("/moon-theme ");
+  });
+
+  it("sends pictures and files to Claude", async () => {
+    const bridge = new DemoBridge();
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await screen.findByLabelText("Message to Claude");
+    const picture = new File([new Uint8Array([137, 80, 78, 71])], "screen.png", {
+      type: "image/png",
+    });
+    const notes = new File(["the plan"], "plan.md", { type: "text/markdown" });
+    await user.upload(screen.getByLabelText("Choose files for Claude"), [picture, notes]);
+    const list = await screen.findByRole("list", { name: "Attached files" });
+    expect(within(list).getByText("screen.png")).toBeInTheDocument();
+    expect(within(list).getByText("plan.md")).toBeInTheDocument();
+    await user.click(within(list).getByRole("button", { name: "Remove plan.md" }));
+    // A file alone (no text) can be sent too.
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(bridge.lastFiles.map((f) => [f.name, f.mime])).toEqual([["screen.png", "image/png"]]),
+    );
+    expect(bridge.lastFiles[0].data).toBe("iVBORw==");
+    expect(await screen.findByRole("img", { name: "screen.png" })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Attached files" })).not.toBeInTheDocument();
+  });
+
+  it("merges a pull request Claude made in the cloud", async () => {
+    const bridge = new DemoBridge();
+    const user = userEvent.setup();
+    render(<App bridge={bridge} />);
+    await user.click(await screen.findByRole("button", { name: "Cloud" }));
+    const pr = await screen.findByRole("group", { name: "Pull request 12" });
+    expect(screen.getByText("#12 Add a progress bar to the extract dialog")).toBeInTheDocument();
+    expect(screen.getByText("checks pass")).toBeInTheDocument();
+    await user.click(within(pr).getByRole("button", { name: "Merge" }));
+    expect(
+      await screen.findByText("No open pull requests from Claude in Luna-OS/Moon-Zip."),
+    ).toBeInTheDocument();
+    expect(bridge.merged).toEqual([12]);
   });
 
   it("finds, downloads and installs an update from Settings", async () => {

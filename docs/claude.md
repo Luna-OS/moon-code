@@ -70,7 +70,12 @@ claude.ai/code opens as a tab next to your files (`src/workbench/CloudWeb.tsx`, 
   session; every other link opens in your browser.
 - The user agent leaves out Electron's token, since some sign-in pages turn away browsers they
   don't know. If Google's sign-in still refuses, sign in with your email address.
-- "Browser" in the tab's toolbar opens the page in your browser after all.
+- The tab has no browser chrome: a Moon header with the session's task and a reload button, and
+  claude.ai's colour variables set to the Moon palette (`MOON_WEB_CSS` in `CloudWeb.tsx`). Only
+  when the page can't load does it offer the browser.
+- "Claude's pull requests" in the Cloud view lists the open pull requests whose branch starts with
+  `claude/` in the picked repository (`gh pr list`), with their checks, and merges one with
+  `gh pr merge --merge` (a draft is marked ready first).
 
 ## Usage
 
@@ -101,10 +106,21 @@ claude.ai pages open in the web tab, the rest in the browser.
 
 The **Skills** view (`electron/claude/skills.cjs`) lists the open project's skills
 (`.claude/skills`) and your personal ones (`~/.claude/skills`) with the name and description from
-each SKILL.md. "+" makes a new skill with a SKILL.md to fill in; "Install from GitHub" clones a
-repository (shallow, into a temporary folder) and copies every folder with a SKILL.md into
-`~/.claude/skills`; "Use" puts `/name` into the message to Claude; "Remove" moves a skill to the
+each SKILL.md. "+" makes a new skill with a SKILL.md to fill in; "Install from GitHub" downloads the
+repository's archive (`api.github.com/repos/<owner>/<repo>/tarball`, or `gh api` for a private
+one; no git needed, `electron/tar.cjs` unpacks it) into a temporary folder and copies every folder
+with a SKILL.md into `~/.claude/skills` – only the linked folder's for a `…/tree/<branch>/<folder>`
+link; "Use" puts `/name` into the message to Claude; "Remove" moves a skill to the
 recycle bin.
+
+## Pictures and files
+
+The paperclip in the Claude panel (or dropping files on the message box, or pasting a screenshot)
+adds attachments to the next message (`electron/claude/attachments.cjs`). Each is saved in Moon
+Code's data folder (`attachments/<chat>/`, pruned after 30 days), which the chat may read
+(`--add-dir`); the message lists every saved file with its path, and pictures (PNG, JPEG, GIF,
+WebP up to 5 MB) also go into the message itself as image blocks, so Claude sees them at once.
+Files up to 25 MB are taken.
 
 ## Axo
 

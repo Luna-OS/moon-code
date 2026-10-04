@@ -1,16 +1,38 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertIcon,
   CheckIcon,
   CloudIcon,
   DownloadIcon,
+  ExternalIcon,
   HistoryIcon,
   SendIcon,
 } from "../theme/icons";
+
+const CHECK_LABEL = {
+  passing: "checks pass",
+  failing: "checks fail",
+  pending: "checks running",
+  none: "no checks",
+} as const;
+const CHECK_CHIP = {
+  passing: "mc-chip-mint",
+  failing: "mc-chip-danger",
+  pending: "mc-chip-muted",
+  none: "mc-chip-muted",
+} as const;
 import { CLAUDE_CODE_WEB, sessionRef, sessionUrl } from "../lib/cloud";
 import { timeAgo } from "../lib/format";
 import { basename } from "../lib/paths";
-import type { ClaudeAccount, CloudSent, CloudTask, GitHubAccount, Repo } from "../lib/types";
+import type {
+  ClaudeAccount,
+  CloudSent,
+  CloudTask,
+  GitHubAccount,
+  MoonCodeBridge,
+  PullRequest,
+  Repo,
+} from "../lib/types";
 import { GitHubCard } from "./GitHubCard";
 
 /**
@@ -21,6 +43,7 @@ import { GitHubCard } from "./GitHubCard";
  * cloud tab, and follow-ups go to them from here (`claude -p … --cloud <session>`).
  */
 export function CloudView({
+  bridge,
   claude,
   github,
   folder,
@@ -39,6 +62,7 @@ export function CloudView({
   onSend,
   onTeleport,
 }: {
+  bridge: MoonCodeBridge;
   claude: ClaudeAccount | null;
   github: GitHubAccount | null;
   folder: string | null;
@@ -92,6 +116,42 @@ export function CloudView({
   };
 
   const typed = sessionRef(session);
+
+  // Claude's pull requests in the picked repository, kept fresh while the view is open.
+  const [pulls, setPulls] = useState<{ repo: string; list: PullRequest[] } | null>(null);
+  const [merging, setMerging] = useState<number | null>(null);
+  const [pullError, setPullError] = useState<string | null>(null);
+  const [pullNonce, setPullNonce] = useState(0);
+  useEffect(() => {
+    if (!githubOk || !target) return;
+    let cancelled = false;
+    const load = () => {
+      bridge
+        .githubPulls(target)
+        .then((list) => !cancelled && setPulls({ repo: target, list }))
+        .catch(() => !cancelled && setPulls({ repo: target, list: [] }));
+    };
+    load();
+    const t = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [bridge, githubOk, target, pullNonce]);
+  const merge = async (pr: PullRequest) => {
+    if (!target) return;
+    setMerging(pr.number);
+    setPullError(null);
+    try {
+      await bridge.githubMerge(target, pr.number, pr.draft);
+      setPullNonce((n) => n + 1);
+    } catch (e) {
+      setPullError((e as Error).message);
+    } finally {
+      setMerging(null);
+    }
+  };
+  const shownPulls = pulls && pulls.repo === target ? pulls.list : null;
   const q = filter.trim().toLowerCase();
   const shown = (repos ?? []).filter(
     (r) => !q || r.fullName.toLowerCase().includes(q) || r.description.toLowerCase().includes(q),
@@ -253,6 +313,74 @@ export function CloudView({
             connect the repository through its GitHub app.
           </p>
         </section>
+
+        {githubOk && target && (
+          <section className="flex flex-col gap-1.5" aria-label="Claude's pull requests">
+            <h3 className="mc-eyebrow m-0">Claude&apos;s pull requests</h3>
+            {shownPulls === null && (
+              <span className="text-[0.75rem] text-[var(--mc-text-faint)]">Loading…</span>
+            )}
+            {shownPulls?.length === 0 && (
+              <span className="text-[0.75rem] text-[var(--mc-text-faint)]">
+                No open pull requests from Claude in {target}.
+              </span>
+            )}
+            {shownPulls?.map((pr) => (
+              <div key={pr.number} className="mc-inset flex flex-col gap-1 px-2.5 py-2">
+                <span className="truncate font-medium" title={pr.title}>
+                  #{pr.number} {pr.title}
+                </span>
+                <span className="flex flex-wrap items-center gap-1.5 text-[0.6875rem] text-[var(--mc-text-faint)]">
+                  <span className={`mc-chip ${CHECK_CHIP[pr.checks]}`}>
+                    {CHECK_LABEL[pr.checks]}
+                  </span>
+                  {pr.draft && <span className="mc-chip mc-chip-muted">draft</span>}
+                  {pr.mergeable === false && (
+                    <span className="mc-chip mc-chip-muted">conflicts</span>
+                  )}
+                  <span className="truncate">{pr.branch}</span>
+                </span>
+                <div
+                  className="flex flex-wrap gap-1"
+                  role="group"
+                  aria-label={`Pull request ${pr.number}`}
+                >
+                  <button
+                    type="button"
+                    className="mc-btn mc-btn-primary mc-btn-sm"
+                    disabled={merging !== null || pr.mergeable === false || pr.checks === "failing"}
+                    title={
+                      pr.checks === "failing"
+                        ? "Its checks fail"
+                        : pr.mergeable === false
+                          ? "It conflicts with the base branch"
+                          : "Merge it into the base branch"
+                    }
+                    onClick={() => void merge(pr)}
+                  >
+                    {merging === pr.number ? "Merging…" : "Merge"}
+                  </button>
+                  <button
+                    type="button"
+                    className="mc-btn mc-btn-ghost mc-btn-sm"
+                    onClick={() => onOpen(pr.url)}
+                  >
+                    <ExternalIcon /> On GitHub
+                  </button>
+                </div>
+              </div>
+            ))}
+            {pullError && (
+              <p
+                className="m-0 text-[0.6875rem]"
+                role="alert"
+                style={{ color: "var(--mc-danger)" }}
+              >
+                {pullError}
+              </p>
+            )}
+          </section>
+        )}
 
         <section className="flex flex-col gap-1.5">
           <h3 className="mc-eyebrow m-0">Your cloud sessions</h3>

@@ -633,6 +633,49 @@ body {
     text-decoration: underline;
   }
 
+  /* Files and pictures added to a message. */
+  .mc-composer[data-dragging] {
+    border-color: var(--mc-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--mc-accent) 25%, transparent);
+  }
+  .mc-attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.25rem 0.2rem 0.2rem;
+    border: 1px solid var(--mc-border);
+    border-radius: 0.55rem;
+    background: var(--mc-inset);
+    font-size: 0.6875rem;
+    color: var(--mc-text-muted);
+  }
+  .mc-attachment img {
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 0.35rem;
+    object-fit: cover;
+  }
+  .mc-attachment-ext {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    padding: 0 0.2rem;
+    border-radius: 0.35rem;
+    background: color-mix(in srgb, var(--mc-accent) 18%, transparent);
+    color: var(--mc-accent);
+    font-size: 0.5625rem;
+    font-weight: 700;
+  }
+  .mc-msg-image {
+    max-width: 180px;
+    max-height: 140px;
+    border-radius: 0.5rem;
+    border: 1px solid var(--mc-border);
+    object-fit: cover;
+  }
+
   /* Menus (the account menu). */
   .mc-menu-item {
     display: flex;

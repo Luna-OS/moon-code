@@ -901,6 +901,7 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
               )}
               {view === "cloud" && (
                 <CloudView
+                  bridge={bridge}
                   claude={account}
                   github={github}
                   folder={folder}
@@ -1081,6 +1082,12 @@ export default function App({ bridge: given }: { bridge?: MoonCodeBridge }) {
                 nonce={web.nonce}
                 embedded={bridge.kind === "electron"}
                 visible={front === "web"}
+                theme={theme}
+                title={
+                  (settings.cloudTasks ?? []).find(
+                    (t) => t.sessionId && web.url.includes(t.sessionId),
+                  )?.task ?? null
+                }
                 onOpenExternal={(url) => void bridge.openExternal(url)}
               />
             )}

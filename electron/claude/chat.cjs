@@ -52,10 +52,11 @@ class ChatManager {
   }
 
   /** Sends one user message; false when the chat has no running process. */
-  send(chatId, text) {
+  /** Sends a message: its text, or content blocks (pictures and text). */
+  send(chatId, content) {
     const chat = this.chats.get(chatId);
     if (!chat || chat.child.exitCode !== null) return false;
-    chat.child.stdin.write(userMessageLine(text));
+    chat.child.stdin.write(userMessageLine(content));
     return true;
   }
 
